@@ -1,0 +1,37 @@
+# --- 1. 拦截所有 Vivado 自动生成的中间件 (无论在哪个层级) ---
+**/HCS_SOC.gen/
+**/HCS_SOC.runs/
+**/HCS_SOC.sim/
+**/HCS_SOC.cache/
+**/HCS_SOC.hw/
+**/HCS_SOC.ip_user_files/
+**/HCS_SOC.tmp/
+
+# --- 2. 拦截全局噪音文件 ---
+*.log
+*.jou
+*.pb
+*.str
+*.backup
+*.wdb
+*.vcd
+.Xil/
+**/.Xil/
+
+# --- 3. 拦截编译二进制文件 ---
+*.bit
+*.bin
+*.mcs
+*.dcp
+
+# --- 4. 显式保护源代码 (白名单) ---
+!*.v
+!*.sv
+!*.vhd
+!*.vhdl
+!*.xdc
+!*.xpr
+!*.tcl
+!*.py
+!*.md
+!*.hex
