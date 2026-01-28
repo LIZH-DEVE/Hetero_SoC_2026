@@ -1,266 +1,219 @@
 `timescale 1ns / 1ps
 
-/**
- * 模块名称: dma_master_engine
- * 版本: Day06_Final (FIFO 流控版)
- * 描述: 
- * AXI4-Full 主机引擎，负责将 Gearbox/FIFO 传来的 32-bit 数据写入 DDR。
- * [功能升级] 移除了内部测试数据生成器，改为通过 i_fifo_rdata 读取外部数据。
- */
+module dma_master_engine (
+    input  logic        clk,
+    input  logic        rst_n,
 
-module dma_master_engine #(
-    parameter ADDR_WIDTH = 32,
-    parameter DATA_WIDTH = 32
-)(
-    input  logic                   clk,
-    input  logic                   rst_n,
+    // 控制接口
+    input  logic        i_start,
+    input  logic [31:0] i_base_addr,
+    input  logic [31:0] i_total_len,
+    output logic        o_done,
 
-    // --- 用户控制接口 (CSR) ---
-    input  logic                   i_start,      // 启动信号
-    input  logic [ADDR_WIDTH-1:0]  i_base_addr,  // 目标 DDR 地址
-    input  logic [31:0]            i_total_len,  // 搬运总长度 (字节)
-    output logic                   o_done,       // 完成中断
-    output logic                   o_error,      // 错误标志
+    // AXI4 Master Write Interface
+    output logic [31:0] m_axi_awaddr,
+    output logic [7:0]  m_axi_awlen,
+    output logic        m_axi_awvalid,
+    input  logic        m_axi_awready,
+    
+    output logic [31:0] m_axi_wdata,
+    output logic        m_axi_wlast,
+    output logic        m_axi_wvalid,
+    input  logic        m_axi_wready,
+    
+    input  logic        m_axi_bvalid,
+    output logic        m_axi_bready,
+    input  logic [1:0]  m_axi_bresp,
 
-    // --- [Day 6 Core] 数据流接口 (来自 Gearbox) ---
-    // 描述: DMA 即使想发数据，也必须等这里有数据 (i_fifo_empty == 0)
-    input  logic [DATA_WIDTH-1:0]  i_fifo_rdata, // 32-bit 数据输入
-    input  logic                   i_fifo_empty, // 1=无数据，暂停发送
-    output logic                   o_fifo_ren,   // 1=读取一个数据 (Ready)
-
-    // --- AXI4 写地址通道 (AW) ---
-    output logic [ADDR_WIDTH-1:0]  m_axi_awaddr, 
-    output logic [7:0]             m_axi_awlen,  
-    output logic [2:0]             m_axi_awsize, 
-    output logic [1:0]             m_axi_awburst,
-    output logic                   m_axi_awvalid,
-    input  logic                   m_axi_awready,
-
-    // --- AXI4 写数据通道 (W) ---
-    output logic [DATA_WIDTH-1:0]  m_axi_wdata,  
-    output logic [DATA_WIDTH/8-1:0] m_axi_wstrb, 
-    output logic                   m_axi_wlast,  
-    output logic                   m_axi_wvalid, 
-    input  logic                   m_axi_wready, 
-
-    // --- AXI4 写响应通道 (B) ---
-    input  logic [1:0]             m_axi_bresp,  
-    input  logic                   m_axi_bvalid, 
-    output logic                   m_axi_bready, 
-
-    // --- AXI4 读通道 (封堵) ---
-    output logic [ADDR_WIDTH-1:0]  m_axi_araddr, 
-    output logic [7:0]             m_axi_arlen,  
-    output logic [2:0]             m_axi_arsize, 
-    output logic [1:0]             m_axi_arburst,
-    output logic                   m_axi_arvalid,
-    input  logic                   m_axi_arready,
-    input  logic [DATA_WIDTH-1:0]  m_axi_rdata,  
-    input  logic                   m_axi_rlast,  
-    input  logic [1:0]             m_axi_rresp,  
-    input  logic                   m_axi_rvalid, 
-    output logic                   m_axi_rready  
+    // FIFO Interface
+    input  logic        i_fifo_empty,
+    input  logic [31:0] i_fifo_rdata,
+    output logic        o_fifo_ren
 );
 
-    // ========================================================
-    // 内部寄存器与状态机定义
-    // ========================================================
-    typedef enum int {
-        IDLE,           // 空闲
-        CALC,           // 计算拆包参数
-        AW_HANDSHAKE,   // 发送写地址
-        W_BURST,        // 发送写数据 (流控关键点)
-        B_RESP,         // 等待写响应
-        DONE            // 完成
+    // =================================================
+    // 参数与内部信号
+    // =================================================
+    // AXI 最大 Burst 限制 (bytes)
+    localparam int MAX_BURST_BYTES = 1024; // 256 beats * 4 bytes
+
+    typedef enum logic [2:0] {
+        IDLE,
+        CALC_BURST, // 计算拆包参数
+        ADDR_PHASE, // 发送地址
+        DATA_PHASE, // 发送数据
+        RESP_PHASE, // 等待写响应
+        DONE
     } state_t;
 
-    state_t current_state, next_state;
+    state_t state, next_state;
 
-    // 任务进度寄存器
-    logic [ADDR_WIDTH-1:0] addr_reg;       
-    logic [31:0]           len_left_reg;   
+    // 内部寄存器
+    logic [31:0] current_addr;
+    logic [31:0] bytes_remaining;
+    logic [31:0] burst_bytes;     // 当前 Burst 实际传输字节
     
-    // W通道计数器
-    logic [7:0]            w_beat_cnt; 
+    // [优化] 计数器位宽扩展：防止 256 beats 时溢出 (虽然 awlen 是 8 位，但比较时安全起见用 9 位)
+    logic [8:0]  beat_count;      
 
-    // 拆包计算辅助信号
-    logic [12:0] bytes_to_4k_boundary; 
-    logic [11:0] bytes_this_burst; 
-    logic [7:0]  burst_len_minus1;
+    // [Patch 1] 4K 边界计算辅助信号
+    logic [12:0] dist_to_4k;
+    logic [31:0] calc_burst_bytes; // 组合逻辑计算出的下一跳长度
 
-    // ========================================================
-    // 核心计算逻辑 (4KB Boundary & Length Split)
-    // ========================================================
-    
-    // 1. 计算离 4KB 边界还有多远
-    assign bytes_to_4k_boundary = 13'h1000 - {1'b0, addr_reg[11:0]};
-
-    // 2. 决定本次 Burst 传多少字节 (Min-3 算法)
+    // =================================================
+    // 组合逻辑：Burst 长度裁决 (Timing Critical)
+    // =================================================
     always_comb begin
-        // 比较逻辑：取 (剩余长度) 和 (4K距离) 的较小值
-        // 然后再和 (1024字节/256拍) 比较
-        if (len_left_reg < bytes_to_4k_boundary) begin
-            if (len_left_reg < 32'd1024)
-                bytes_this_burst = len_left_reg[11:0];
+        // 1. 计算距离下一个 4K 边界的字节数 (0x1000 - 低12位)
+        dist_to_4k = 13'h1000 - {1'b0, current_addr[11:0]};
+
+        // 2. 三方比对取最小值：(剩余长度) vs (4K距离) vs (AXI最大限制)
+        // 优先级：4K边界最优先 (防止协议违规)，其次是剩余长度
+        if (bytes_remaining < MAX_BURST_BYTES) begin
+            if (bytes_remaining < dist_to_4k)
+                calc_burst_bytes = bytes_remaining;
             else
-                bytes_this_burst = 12'd1024;
-        end 
-        else begin
-            if (bytes_to_4k_boundary < 13'd1024)
-                bytes_this_burst = bytes_to_4k_boundary[11:0];
+                calc_burst_bytes = {19'd0, dist_to_4k};
+        end else begin
+            if (dist_to_4k < MAX_BURST_BYTES)
+                calc_burst_bytes = {19'd0, dist_to_4k};
             else
-                bytes_this_burst = 12'd1024;
+                calc_burst_bytes = MAX_BURST_BYTES;
         end
     end
 
-    // 3. 字节转拍数 (bytes / 4 - 1)
-    assign burst_len_minus1 = (bytes_this_burst[11:2] == 0) ? 8'd0 : (bytes_this_burst[11:2] - 8'd1);
-
-    // ========================================================
-    // 状态机时序逻辑 (Sequential Logic)
-    // ========================================================
+    // =================================================
+    // 状态机逻辑 (Sequential)
+    // =================================================
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            current_state <= IDLE;
-            addr_reg      <= 0;
-            len_left_reg  <= 0;
-            w_beat_cnt    <= 0;
-            o_error       <= 0; 
-        end 
-        else begin
-            current_state <= next_state;
+            state           <= IDLE;
+            current_addr    <= '0;
+            bytes_remaining <= '0;
+            burst_bytes     <= '0;
+            beat_count      <= '0;
+            o_done          <= 1'b0;
+        end else begin
+            state  <= next_state;
+            o_done <= (state == DONE);
 
-            case (current_state)
+            case (state)
                 IDLE: begin
-                    // 锁存用户输入的基地址和长度
-                    if (i_start) begin
-                        if (i_base_addr[5:0] != 0 || i_total_len[1:0] != 0) begin
-                            o_error      <= 1'b1; // 对齐检查失败
-                        end
-                        else begin
-                            o_error      <= 1'b0; 
-                            addr_reg     <= i_base_addr;
-                            len_left_reg <= i_total_len;
-                        end
+                    if (i_start && i_total_len != 0) begin // [优化] 零长度保护
+                        current_addr    <= i_base_addr;
+                        bytes_remaining <= i_total_len;
                     end
                 end
 
-                AW_HANDSHAKE: begin
-                    // 握手成功，重置 beat 计数器
-                    if (m_axi_awvalid && m_axi_awready) begin
-                        w_beat_cnt <= 0;
-                    end
+                CALC_BURST: begin
+                    beat_count  <= '0;
+                    burst_bytes <= calc_burst_bytes; // 锁存计算结果
                 end
 
-                W_BURST: begin
-                    // [关键修改] 只有当 Valid 和 Ready 同时有效时，才算传输了一拍
-                    // Valid 由 (!fifo_empty) 决定，Ready 由 AXI 从机决定
+                DATA_PHASE: begin
+                    // 仅当握手成功时计数
                     if (m_axi_wvalid && m_axi_wready) begin
-                        w_beat_cnt <= w_beat_cnt + 1;
+                        beat_count <= beat_count + 1;
                     end
                 end
 
-                B_RESP: begin
-                    // 写响应成功，更新地址和剩余长度
+                RESP_PHASE: begin
                     if (m_axi_bvalid && m_axi_bready) begin
-                        addr_reg     <= addr_reg + bytes_this_burst;
-                        len_left_reg <= len_left_reg - bytes_this_burst;
+                        // 响应成功，更新指针
+                        current_addr    <= current_addr + burst_bytes;
+                        bytes_remaining <= bytes_remaining - burst_bytes;
                     end
                 end
             endcase
         end
     end
 
-    // ========================================================
-    // 状态机组合逻辑 (Next State Logic)
-    // ========================================================
+    // =================================================
+    // 下一状态逻辑 (Combinational)
+    // =================================================
     always_comb begin
-        next_state = current_state;
+        next_state = state;
+        case (state)
+            IDLE: 
+                // [优化] 增加非零检查
+                if (i_start && i_total_len != 0) next_state = CALC_BURST;
 
-        case (current_state)
-            IDLE: begin
-                if (i_start) begin
-                    // 如果参数错误，卡在 IDLE
-                    if (i_base_addr[5:0] != 0 || i_total_len[1:0] != 0)
-                        next_state = IDLE;
-                    else
-                        next_state = CALC;
-                end
-            end
+            CALC_BURST: 
+                next_state = ADDR_PHASE;
 
-           CALC: begin
-                // 计算只需一个周期，直接跳去发地址
-                next_state = AW_HANDSHAKE;
-            end
+            ADDR_PHASE: 
+                if (m_axi_awvalid && m_axi_awready) next_state = DATA_PHASE;
 
-            AW_HANDSHAKE: begin
-                if (m_axi_awvalid && m_axi_awready) 
-                    next_state = W_BURST;
-            end
+            DATA_PHASE: 
+                // 数据发完 (wlast) 且 握手成功
+                if (m_axi_wlast && m_axi_wvalid && m_axi_wready) next_state = RESP_PHASE;
 
-            W_BURST: begin
-                // 传完最后一拍 (wlast) 且握手成功，去等响应
-                if (m_axi_wlast && m_axi_wvalid && m_axi_wready) 
-                    next_state = B_RESP;
-            end
-
-            B_RESP: begin
+            RESP_PHASE: 
                 if (m_axi_bvalid && m_axi_bready) begin
-                    // 如果剩于长度为0，说明全部搬完，Done
-                    if (len_left_reg == bytes_this_burst) 
+                    // 检查是否全部传完
+                    if (bytes_remaining == burst_bytes) 
                         next_state = DONE;
                     else 
-                        next_state = CALC; // 否则回去计算下一包
+                        next_state = CALC_BURST; // 继续拆包
                 end
-            end
 
-            DONE: begin
+            DONE: 
                 next_state = IDLE;
-            end
-
+                
             default: next_state = IDLE;
         endcase
     end
 
-    // ========================================================
-    // [Day 6 Critical] 接口驱动逻辑 (包含 FIFO 流控)
-    // ========================================================
-
-    // --- AW (写地址) ---
-    assign m_axi_awaddr  = addr_reg;
-    assign m_axi_awlen   = burst_len_minus1; 
-    assign m_axi_awsize  = 3'b010;           // 32-bit width
-    assign m_axi_awburst = 2'b01;            // INCR
-    assign m_axi_awvalid = (current_state == AW_HANDSHAKE);
-
-    // --- W (写数据) - 核心流控 ---
-    // 1. Valid 信号：处于 Burst 状态，且 FIFO 里有数据
-    assign m_axi_wvalid = (current_state == W_BURST) && (!i_fifo_empty);
+    // =================================================
+    // AXI 输出逻辑
+    // =================================================
     
-    // 2. Data 信号：直接连通 Gearbox/FIFO 输出
-    assign m_axi_wdata  = i_fifo_rdata;      
+    // Write Address
+    assign m_axi_awvalid = (state == ADDR_PHASE);
+    assign m_axi_awaddr  = current_addr;
+    // awlen = beats - 1. (bytes >> 2) - 1. 
+    // 假设地址是 4 字节对齐的。
+    assign m_axi_awlen   = (burst_bytes[31:2]) - 1; 
+
+    // Write Data
+    assign m_axi_wvalid = (state == DATA_PHASE) && !i_fifo_empty;
+    assign m_axi_wdata  = i_fifo_rdata;
     
-    // 3. FIFO 读使能：AXI 总线要读 (Ready) + 我们想发 (W_BURST) + 有数据 (!Empty)
-    // 这形成了一个背压链：Memory Ready -> DMA -> FIFO Read -> Gearbox -> FIFO
-    assign o_fifo_ren   = (current_state == W_BURST) && m_axi_wready && (!i_fifo_empty);
+    // WLAST 生成: 当拍数 == awlen 时拉高
+    // 注意: m_axi_awlen 是 8 位，这里隐式扩展比较
+    assign m_axi_wlast  = (state == DATA_PHASE) && (beat_count == m_axi_awlen);
 
-    assign m_axi_wstrb  = 4'hF; // 全有效
-
-    // 4. WLAST 信号：当前是第 N 拍 + 当前数据有效
-    assign m_axi_wlast  = (w_beat_cnt == burst_len_minus1) && (current_state == W_BURST) && (!i_fifo_empty);
-
-    // --- B (写响应) ---
-    assign m_axi_bready = 1'b1; // 总是准备好接收结果
-
-    // --- AR/R (读通道封堵) ---
-    assign m_axi_araddr  = 0;
-    assign m_axi_arlen   = 0;
-    assign m_axi_arsize  = 0;
-    assign m_axi_arburst = 0;
-    assign m_axi_arvalid = 0;
-    assign m_axi_rready  = 0;
-
-    // --- 状态反馈 ---
-    assign o_done = (current_state == DONE);
+    // Write Response
+    assign m_axi_bready = (state == RESP_PHASE);
     
+    // FIFO Read Enable: 仅在 AXI 数据握手时读 FIFO
+    assign o_fifo_ren   = (state == DATA_PHASE) && m_axi_wvalid && m_axi_wready;
+
+    // =================================================
+    // [验证] 断言检查 (Assertions)
+    // =================================================
+    // synthesis translate_off
+    
+    // 检查 1: 输入地址必须 4 字节对齐，否则移位计算 awlen 会出错
+    initial begin
+        wait(rst_n);
+        forever begin
+            @(posedge clk);
+            if (i_start) begin
+                assert(i_base_addr[1:0] == 2'b00) 
+                else $error("DMA Error: Base address must be 4-byte aligned!");
+            end
+        end
+    end
+
+    // 检查 2: 4K 边界保护
+    always @(posedge clk) begin
+        if (m_axi_awvalid && m_axi_awready) begin
+            // 检查当前 Burst 结束地址是否跨越 4K
+            assert ( (m_axi_awaddr[11:0] + (m_axi_awlen + 1)*4) <= 13'h1000 )
+            else $error("DMA Error: AXI Burst crossed 4K boundary!");
+        end
+    end
+    // synthesis translate_on
+
 endmodule

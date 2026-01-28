@@ -14,3 +14,5 @@ status = platform.build()
 comp = client.get_component(name="crypto_test_app")
 comp.build()
 
+vitis.dispose()
+

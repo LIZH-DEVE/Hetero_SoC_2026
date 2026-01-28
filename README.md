@@ -13,7 +13,7 @@
 | **Day 5** | 2026-01-26 | 双商密引擎集成：AES/SM4 切换 | ✅ 已归档 | [查看 Day 5 日志](./doc/daily_logs/Day05.md) |
 | **Day 6** | 2026-01-27 | 系统集成与 CDC：FIFO/Gearbox/DMA | ✅ 已归档 | [查看 Day 6 日志](./doc/daily_logs/Day06.md) |
 | **Day 7** | 2026-01-28 | 双核分发器与自动化仿真验证 | ✅ 已归档 | [查看 Day 7 日志](./doc/daily_logs/Day07.md) |
-
+| **Day 8** | 2026-01-28 | 统一包缓冲管理 (PBM) 与原子回滚机制 | ✅ 已归档 | [查看 Day 8 日志](./doc/daily_logs/Day08.md) |
 
 ---
 *本项目遵循像素级逻辑验证准则。*
