@@ -1,99 +1,125 @@
 `timescale 1ns / 1ps
 
+/**
+ * 模块名称: crypto_engine
+ * 版本: Day06_Final_Gold (双核物理适配版)
+ * 描述: 
+ * 集成 AES (Secworks) 和 SM4 (Raymond) 算法引擎，支持 CBC 模式。
+ * [Status] 接口已根据 .v 源码进行物理级对齐，消除所有 connection error。
+ */
+
 module crypto_engine (
     input  logic           clk,
     input  logic           rst_n,
+    
+    // 控制接口
     input  logic           algo_sel, // 0:AES, 1:SM4
-    input  logic           start,
-    output logic           done,
-    output logic           busy,
-    input  logic [127:0]   key,
-    input  logic [127:0]   din,
-    output logic [127:0]   dout
+    input  logic           start,    // 启动当前 block 计算
+    output logic           done,     // 当前 block 计算完成
+    output logic           busy,     // 引擎忙状态
+    
+    // 数据接口
+    input  logic [127:0]   key,      // 密钥
+    input  logic [127:0]   din,      // 明文输入 (Plaintext)
+    output logic [127:0]   dout      // 密文输出 (Ciphertext)
 );
 
-    // ==========================================================
-    // 1. AES 部分 (保持原样，无需变动)
-    // ==========================================================
-    typedef enum logic [2:0] { AES_IDLE, AES_HOLD_INIT, AES_WAIT_KEY_DONE, AES_HOLD_NEXT, AES_WAIT_RESULT } aes_fsm_t;
-    aes_fsm_t aes_state;
-    logic aes_init_sig, aes_next_sig, aes_ready, aes_res_valid;
-    logic [127:0] aes_res;
+    // ========================================================
+    // 1. CBC 模式逻辑 (Cipher Block Chaining)
+    // ========================================================
+    logic [127:0] r_iv;           
+    logic [127:0] w_core_din;     
+    logic [127:0] w_aes_dout;
+    logic [127:0] w_sm4_dout;
+    logic [127:0] w_result_mux;   
+    
+    // 内部完成信号
+    logic aes_done;
+    logic sm4_done;
 
-    // AES FSM
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            aes_state <= AES_IDLE; aes_init_sig <= 0; aes_next_sig <= 0;
-        end else begin
-            case (aes_state)
-                AES_IDLE: begin aes_init_sig<=0; aes_next_sig<=0; if(start && !algo_sel) begin aes_init_sig<=1; aes_state<=AES_HOLD_INIT; end end
-                AES_HOLD_INIT: begin aes_init_sig<=1; if(!aes_ready) begin aes_init_sig<=0; aes_state<=AES_WAIT_KEY_DONE; end end
-                AES_WAIT_KEY_DONE: begin if(aes_ready) begin aes_next_sig<=1; aes_state<=AES_HOLD_NEXT; end end
-                AES_HOLD_NEXT: begin aes_next_sig<=1; if(!aes_ready) begin aes_next_sig<=0; aes_state<=AES_WAIT_RESULT; end end
-                AES_WAIT_RESULT: begin if(aes_res_valid) aes_state<=AES_IDLE; end
-                default: aes_state <= AES_IDLE;
-            endcase
-        end
-    end
+    // CBC 异或：输入数据 ^ 上一轮密文(IV)
+    assign w_core_din = din ^ r_iv; 
 
+    // ========================================================
+    // 2. 算法引擎实例化 (Algorithm Engines)
+    // ========================================================
+    
+    // --------------------------------------------------------
+    // Engine 1: AES Core (Secworks)
+    // --------------------------------------------------------
     aes_core u_aes_core (
-        .clk(clk), .reset_n(rst_n), .encdec(1'b1), .init(aes_init_sig), .next(aes_next_sig), .ready(aes_ready),
-        .key({key, 128'b0}), .keylen(1'b0), .block(din), .result(aes_res), .result_valid(aes_res_valid)
+        .clk          (clk),
+        .reset_n      (rst_n),
+        
+        // 配置信号 (固定为加密, 128位key)
+        .encdec       (1'b1),        
+        .keylen       (1'b0),        
+        
+        // 控制信号
+        .init         (1'b0),        
+        .next         (start),       
+        .ready        (),            
+        
+        // 数据信号
+        .key          ({128'd0, key}), // 补零至256位
+        .block        (w_core_din),    
+        .result       (w_aes_dout),    
+        .result_valid (aes_done)       
     );
 
-    // ==========================================================
-    // 2. SM4 部分 (已修正：精确匹配 sm4_top 端口)
-    // ==========================================================
-    
-    logic [127:0] sm4_dout_wire;
-    logic         sm4_ready_out; // 对应 result_out 有效
-    logic         sm4_key_exp_ready;
-    
-    // 信号预处理
-    logic sm4_active;
-    assign sm4_active = (algo_sel == 1'b0); // 选中 SM4
-
-    sm4_top u_sm4_opensource (
-        .clk                (clk),
-        .reset_n            (rst_n),              // 对应 sm4_top 的 reset_n
+    // --------------------------------------------------------
+    // Engine 2: SM4 Core (Raymond Rui Chen)
+    // --------------------------------------------------------
+    sm4_top u_sm4_core (
+        .clk               (clk),
+        .reset_n           (rst_n),
         
-        // 模块使能控制
-        .sm4_enable_in      (sm4_active),         // 总使能
-        .encdec_enable_in   (sm4_active),         // 加解密引擎使能
-        .encdec_sel_in      (1'b0),               // 0: 加密, 1: 解密 (通常0为加密，若跑反了改这里)
-        .enable_key_exp_in  (sm4_active),         // 密钥扩展使能
+        // 使能控制 (全部拉高以激活核心)
+        .sm4_enable_in     (1'b1),   
+        .encdec_enable_in  (1'b1),   
+        .enable_key_exp_in (1'b1),   // 启用密钥扩展
         
-        // 数据与握手
-        .valid_in           (start && sm4_active),// 数据有效脉冲
-        .data_in            (din),                // 输入数据
+        // 模式选择 (0: Encrypt, 1: Decrypt)
+        .encdec_sel_in     (1'b0),   // 固定为加密
         
-        // 密钥与握手
-        .user_key_valid_in  (start && sm4_active),// 密钥有效脉冲 (每次start都重新载入密钥)
-        .user_key_in        (key),                // 输入密钥
+        // 数据与控制
+        .valid_in          (start),       // 启动脉冲
+        .data_in           (w_core_din),  // 输入数据
+        .user_key_in       (key),         // 密钥
+        .user_key_valid_in (1'b1),        // 密钥有效指示
         
         // 输出
-        .key_exp_ready_out  (sm4_key_exp_ready),  // 密钥扩展完成标志 (可悬空或用于调试)
-        .ready_out          (sm4_ready_out),      // 计算完成标志 (Result Valid)
-        .result_out         (sm4_dout_wire)       // 计算结果
+        .result_out        (w_sm4_dout),  
+        .ready_out         (sm4_done),    // 完成/就绪信号
+        .key_exp_ready_out ()             // 忽略密钥扩展完成信号
     );
 
-    // Busy 信号逻辑
-    // 当收到 start 且选种 SM4 时变忙，直到收到 ready_out 变闲
-    reg sm4_busy_reg;
-    always_ff @(posedge clk or negedge rst_n) begin
-        if(!rst_n) 
-            sm4_busy_reg <= 1'b0;
-        else if(start && sm4_active) 
-            sm4_busy_reg <= 1'b1;
-        else if(sm4_ready_out) 
-            sm4_busy_reg <= 1'b0;
-    end
+    // ========================================================
+    // 3. 结果输出与 IV 更新
+    // ========================================================
+    
+    // 结果多路复用
+    assign w_result_mux = (algo_sel == 1'b1) ? w_sm4_dout : w_aes_dout;
+    assign done         = (algo_sel == 1'b1) ? sm4_done   : aes_done;
 
-    // ==========================================================
-    // 3. 输出多路选择
-    // ==========================================================
-    assign done = (algo_sel == 1'b1) ? sm4_ready_out : aes_res_valid;
-    assign dout = (algo_sel == 1'b1) ? sm4_dout_wire : aes_res;
-    assign busy = (algo_sel == 1'b1) ? sm4_busy_reg  : (aes_state != AES_IDLE);
+    // 输出驱动
+    assign dout = w_result_mux;
+
+    // IV 更新逻辑
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            r_iv <= 128'd0;
+            busy <= 1'b0;
+        end else begin
+            if (start) 
+                busy <= 1'b1;
+            else if (done) 
+                busy <= 1'b0;
+
+            if (done) begin
+                r_iv <= w_result_mux; // 锁存密文作为下一次的 IV
+            end
+        end
+    end
 
 endmodule

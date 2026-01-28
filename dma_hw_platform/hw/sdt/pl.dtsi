@@ -1,0 +1,21 @@
+/ {
+	amba_pl: amba_pl {
+		ranges;
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		dma_subsystem_wrapper_0: dma_subsystem_wrapper@40000000 {
+			xlnx,rable = <0>;
+			compatible = "xlnx,dma-subsystem-wrapper-1.0";
+			status = "okay";
+			clock-names = "clk";
+			xlnx,data-width = <32>;
+			xlnx,ip-name = "dma_subsystem_wrapper";
+			xlnx,edk-iptype = "PERIPHERAL";
+			xlnx,addr-width = <32>;
+			reg = <0x40000000 0x40000000>;
+			clocks = <&clkc 15>;
+			xlnx,name = "dma_subsystem_wrapper_0";
+		};
+	};
+};
