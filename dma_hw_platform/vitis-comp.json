@@ -3,8 +3,8 @@
   "type": "PLATFORM",
   "configuration": {
     "description": "",
-    "xsa": "D:\\FPGAhanjia\\Hetero_SoC_2026\\HCS_SOC\\system_wrapper.xsa",
-    "xsaPathInPlatform": "dma_hw_platform\\hw\\system_wrapper.xsa",
+    "xsa": "D:\\FPGAhanjia\\Hetero_SoC_2026\\HCS_SOC\\dma_sys_wrapper_day07.xsa",
+    "xsaPathInPlatform": "dma_hw_platform\\hw\\dma_sys_wrapper_day07.xsa",
     "emulationXsa": "",
     "emulationXsaPathInPlatform": "",
     "isCustomFSBL": false,

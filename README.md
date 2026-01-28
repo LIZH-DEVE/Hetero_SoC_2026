@@ -12,6 +12,8 @@
 | **Day 4** | 2026-01-24 | Core-Shell 架构封装与 SoC 拓扑闭合 | ✅ 已归档 | [查看 Day 4 日志](./doc/daily_logs/Day04.md) |
 | **Day 5** | 2026-01-26 | 双商密引擎集成：AES/SM4 切换 | ✅ 已归档 | [查看 Day 5 日志](./doc/daily_logs/Day05.md) |
 | **Day 6** | 2026-01-27 | 系统集成与 CDC：FIFO/Gearbox/DMA | ✅ 已归档 | [查看 Day 6 日志](./doc/daily_logs/Day06.md) |
+| **Day 7** | 2026-01-28 | 双核分发器与自动化仿真验证 | ✅ 已归档 | [查看 Day 7 日志](./doc/daily_logs/Day07.md) |
+
 
 ---
 *本项目遵循像素级逻辑验证准则。*
