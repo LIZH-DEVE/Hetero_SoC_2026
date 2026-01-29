@@ -2,117 +2,94 @@
 
 module tb_dma_subsystem();
 
+    // 信号定义 (与之前一致)
     logic clk, rst_n;
+    // ... AXI-Lite 信号 ...
+    // ... AXI Master 信号 ...
 
-    // AXI-Lite
-    logic [31:0] s_axil_awaddr; logic s_axil_awvalid, s_axil_awready;
-    logic [31:0] s_axil_wdata;  logic [3:0] s_axil_wstrb; logic s_axil_wvalid, s_axil_wready;
-    logic [1:0] s_axil_bresp;   logic s_axil_bvalid, s_axil_bready;
-    logic [31:0] s_axil_araddr; logic s_axil_arvalid, s_axil_arready;
-    logic [31:0] s_axil_rdata;  logic s_axil_rvalid, s_axil_rready;
+    // [Day 9] MAC 模拟信号
+    logic [31:0] rx_tdata;
+    logic        rx_tvalid, rx_tlast, rx_tuser, rx_tready;
 
-    // AXI Master
-    logic [31:0] m_axi_awaddr; logic [7:0] m_axi_awlen; logic [2:0] m_axi_awsize;
-    logic [1:0] m_axi_awburst; logic [3:0] m_axi_awcache; logic [2:0] m_axi_awprot;
-    logic m_axi_awvalid, m_axi_awready;
-    logic [31:0] m_axi_wdata; logic [3:0] m_axi_wstrb; logic m_axi_wlast, m_axi_wvalid, m_axi_wready;
-    logic [1:0] m_axi_bresp;  logic m_axi_bvalid, m_axi_bready;
-    
-    // Read Channel Tie-off
-    logic [31:0] m_axi_araddr; logic [7:0] m_axi_arlen; logic [2:0] m_axi_arsize;
-    logic [1:0] m_axi_arburst; logic m_axi_arvalid, m_axi_arready;
-    logic [31:0] m_axi_rdata;  logic [1:0] m_axi_rresp; logic m_axi_rlast, m_axi_rvalid, m_axi_rready;
+    // 实例化 DUT
+    dma_subsystem dut (
+        .clk(clk), .rst_n(rst_n),
+        // ... AXI 接口连线 ...
+        .rx_axis_tdata(rx_tdata),
+        .rx_axis_tvalid(rx_tvalid),
+        .rx_axis_tlast(rx_tlast),
+        .rx_axis_tuser(rx_tuser),
+        .rx_axis_tready(rx_tready)
+    );
 
-    dma_subsystem #(.ADDR_WIDTH(32), .DATA_WIDTH(32)) dut (.*);
-
+    // 时钟生成
     initial clk = 0;
     always #5 clk = ~clk;
 
-    task write_csr(input [31:0] addr, input [31:0] data);
+    // ==========================================================
+    // Task: 模拟 MAC 发送一个标准的 UDP 包 (14B Eth + 20B IP + 8B UDP + Data)
+    // ==========================================================
+    task send_udp_packet(input logic [15:0] ip_len, input logic [15:0] udp_len, input logic trigger_error);
         begin
             @(posedge clk);
-            s_axil_awaddr <= addr; s_axil_awvalid <= 1;
-            s_axil_wdata <= data; s_axil_wstrb <= 4'hF; s_axil_wvalid <= 1; s_axil_bready <= 1;
-            wait(s_axil_awready && s_axil_wready);
+            // --- [Word 0-2] Ethernet Header (Destination/Source MAC) ---
+            rx_tvalid = 1; rx_tdata = 32'h11223344; rx_tlast = 0; @(posedge clk);
+            rx_tdata = 32'h55667788; @(posedge clk);
+            rx_tdata = 32'h99AA0800; // Type = 0x0800 (IPv4)
             @(posedge clk);
-            s_axil_awvalid <= 0; s_axil_wvalid <= 0;
-            wait(s_axil_bvalid);
+
+            // --- [Word 3-7] IP Header ---
+            rx_tdata = {16'h4500, ip_len}; // Version, IHL, TOS, Total Len
             @(posedge clk);
-            s_axil_bready <= 0;
-            $display("[BFM] Write CSR Addr: %h, Data: %h", addr, data);
+            rx_tdata = 32'h00010000; // ID, Flags, Frag
+            @(posedge clk);
+            rx_tdata = 32'h40110000; // TTL, Protocol(UDP=0x11), Checksum
+            @(posedge clk);
+            rx_tdata = 32'hC0A80101; // Source IP
+            @(posedge clk);
+            rx_tdata = 32'hC0A80102; // Dest IP
+            @(posedge clk);
+
+            // --- [Word 8-9] UDP Header ---
+            rx_tdata = 32'h1F401F40; // Src Port, Dest Port
+            @(posedge clk);
+            rx_tdata = {udp_len, 16'h0000}; // UDP Len, Checksum
+            @(posedge clk);
+
+            // --- [Word 10+] Payload ---
+            rx_tdata = 32'hDEADBEEF;
+            rx_tlast = 1;
+            rx_tuser = trigger_error; // 如果 trigger_error=1，模拟 MAC 校验错
+            @(posedge clk);
+            
+            rx_tvalid = 0; rx_tlast = 0; rx_tuser = 0;
+            $display("[MAC] Packet sent: IP_Len=%d, UDP_Len=%d, Error=%b", ip_len, udp_len, trigger_error);
         end
     endtask
 
     initial begin
-        // 1. 初始化所有输入 (消灭红线 Key Step!)
-        rst_n = 0;
-        
-        // CSR Write Channel
-        s_axil_awaddr = 0; s_axil_awvalid = 0; 
-        s_axil_wdata = 0; s_axil_wstrb = 0; s_axil_wvalid = 0; s_axil_bready = 0;
-        
-        // [Fix] CSR Read Channel (之前悬空导致红色X)
-        s_axil_araddr = 0; s_axil_arvalid = 0; s_axil_rready = 0;
-
-        // AXI Slave Response Simulation
-        m_axi_awready = 1; m_axi_wready = 1; m_axi_bvalid = 1; m_axi_bresp = 0;
-        m_axi_arready = 1; m_axi_rvalid = 0; m_axi_rready = 0;
+        // 初始化信号
+        rst_n = 0; rx_tdata = 0; rx_tvalid = 0; rx_tlast = 0; rx_tuser = 0;
+        // ... 初始化 AXI 读写通道 ...
 
         #100 rst_n = 1;
-        #20;
+        #50;
 
-        $display("\n=== Day 8 PBM Verification Start ===");
+        $display("\n=== Day 9 Protocol Parsing Test Start ===");
 
-        // Step 1: Config DMA
-        write_csr(32'h08, 32'h1000_0000); 
-        write_csr(32'h0C, 32'h0000_0100); 
-        write_csr(32'h00, 32'h0000_0001); 
-        $display("[TB] DMA Started. Waiting for data...");
-        repeat(10) @(posedge clk);
-
-        // Step 2: Good Packet
-        $display("[TB] Injecting Good Packet (AABBCCDD)...");
-        force dut.gearbox_valid = 1;
-        force dut.gearbox_dout  = 32'hAA_BB_CC_DD;
-        force dut.gearbox_last  = 0;
-        force dut.gearbox_ready = 1; 
-        @(posedge clk);
-        force dut.gearbox_dout  = 32'h11_22_33_44;
-        @(posedge clk);
-        force dut.gearbox_dout  = 32'hEE_FF_00_00;
-        force dut.gearbox_last  = 1;
-        @(posedge clk);
+        // --- TEST 1: 发送一个标准的【好包】 ---
+        // IP Total Len = 48 (20 IP + 8 UDP + 20 Data), UDP Len = 28 (8 UDP + 20 Data)
+        // 注意：我们的代码里 ip_total_len 应该比 udp_len 大 20
+        send_udp_packet(16'd48, 16'd28, 0);
         
-        release dut.gearbox_valid; release dut.gearbox_dout; release dut.gearbox_last;
-        force dut.gearbox_valid = 0;
-        
-        $display("[TB] Good Packet injected. Observing AXI Bus...");
-        repeat(30) @(posedge clk);
+        repeat(50) @(posedge clk);
 
-        // Step 3: Bad Packet (Rollback Test)
-        $display("[TB] Injecting Bad Packet (DEADBEEF) with Error...");
-        force dut.gearbox_valid = 1;
-        force dut.gearbox_dout  = 32'hDEAD_BEEF; 
-        force dut.gearbox_last  = 0;
-        @(posedge clk);
-        force dut.gearbox_dout  = 32'hBAD0_BAD0;
-        force dut.gearbox_last  = 1;
-        
-        // [Fix] 使用新定义的信号进行 Force
-        force dut.pbm_error_inject = 1; 
-        @(posedge clk);
-
-        release dut.gearbox_valid; release dut.gearbox_dout; release dut.gearbox_last;
-        release dut.pbm_error_inject; // Release the error signal
-        
-        force dut.gearbox_valid = 0;
-        // force dut.pbm_error_inject = 0; // Not needed if released, default is 0
-
-        $display("[TB] Bad Packet injected. PBM should Rollback.");
-        $display("[TB] Monitoring AXI WDATA. It should NOT contain DEADBEEF/BAD0BAD0.");
+        // --- TEST 2: 发送一个【长度不匹配的坏包】 ---
+        // IP 报 48，UDP 报 100 -> 触发 Task 8.2 的逻辑回滚
+        send_udp_packet(16'd48, 16'd100, 0);
 
         repeat(50) @(posedge clk);
-        $display("=== Day 8 Verification Finished ===");
+        $display("=== Day 9 Test Finished ===");
         $stop;
     end
 endmodule
