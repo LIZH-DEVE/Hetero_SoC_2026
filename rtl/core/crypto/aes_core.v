@@ -35,7 +35,8 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 // ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
-//======================================================================
+//=====================================================================
+`default_nettype wire
 `timescale 1ns / 1ps
 `default_nettype none
 

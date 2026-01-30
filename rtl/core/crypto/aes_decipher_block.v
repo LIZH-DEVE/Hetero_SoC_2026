@@ -37,7 +37,7 @@
 // ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 //======================================================================
-
+`default_nettype wire
 `default_nettype none
 
 module aes_decipher_block(
