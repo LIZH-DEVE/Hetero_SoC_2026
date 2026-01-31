@@ -1,0 +1,2 @@
+../rtl/core/fast_path.sv
+../tb/tb_day17_fastpath.sv

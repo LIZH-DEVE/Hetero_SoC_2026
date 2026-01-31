@@ -33,13 +33,14 @@ module dma_desc_fetcher #(
 );
 
     // 状态机定义
-    typedef enum logic [2:0] {
+    typedef enum logic [3:0] {
         IDLE,       // 等待指针更新
         FETCH_REQ,  // 发起读请求
         FETCH_DAT,  // 接收描述符数据
         DECODE,     // 解析数据
         EXEC_WAIT,  // 等待 DMA 搬运完毕
-        UPDATE_HEAD // 更新 Head 指针
+        UPDATE_HEAD, // 更新 Head 指针
+        HW_INIT     // 硬件初始化：写入空描述符
     } state_t;
 
     state_t state, next_state;
@@ -49,10 +50,11 @@ module dma_desc_fetcher #(
     logic [31:0] desc_word0_addr;
     logic [31:0] desc_word1_ctrl;
     logic [1:0]  fetch_cnt; // 计数器：描述符有 4 个字 (16 Bytes)
+    logic [23:0] init_cnt; // 初始化计数器
+    logic        init_done;     // 初始化完成标志
 
     // =========================================================
     // 状态机逻辑
-    // =========================================================
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state <= IDLE;
@@ -61,12 +63,31 @@ module dma_desc_fetcher #(
             o_dma_start <= 0;
             desc_word0_addr <= 0;
             desc_word1_ctrl <= 0;
+            init_cnt <= 0;
+            init_done <= 0;
         end else begin
-            case (state)
+             case (state)
                 IDLE: begin
+                    // 只要是首次运行且Ring Size不为0，执行HW初始化
+                    if (!init_done && i_ring_size != 0) begin
+                        state <= HW_INIT;
+                    end
                     // 只要 Head 不等于 Tail，且 Ring Size 不为 0，说明有任务
-                    if ((head_ptr != i_sw_tail_ptr) && (i_ring_size != 0)) begin
+                    else if ((head_ptr != i_sw_tail_ptr) && (i_ring_size != 0)) begin
                         state <= FETCH_REQ;
+                    end
+                end
+
+                HW_INIT: begin
+                    if (init_cnt < 24'd24) begin  // 写入24个空描述符
+                        init_cnt <= init_cnt + 1;
+                        // 每个描述符写入零（16字节）
+                        desc_word0_addr <= 32'd0;
+                        desc_word1_ctrl <= 32'd0;
+                    end else begin
+                        init_done <= 1;
+                        init_cnt <= 0;
+                        state <= IDLE;
                     end
                 end
 

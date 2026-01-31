@@ -1,0 +1,324 @@
+================================================================================
+Day 16: 硬件防火墙(ACL) - 完成报告
+================================================================================
+
+完成时间: 2026-01-31
+任务: Task 15.1 & Task 15.2
+状态: ✅ 完成
+验证方式: 静态代码检查
+
+================================================================================
+Task 15.1: 5-Tuple Extraction
+================================================================================
+
+功能描述:
+  提取五元组（5-Tuple）
+  - Source IP (32-bit)
+  - Source Port (16-bit)
+  - Destination IP (32-bit)
+  - Destination Port (16-bit)
+  - Protocol (8-bit)
+
+实现文件: rtl/security/five_tuple_extractor.sv
+
+核心功能:
+  ✅ 状态机设计: IDLE → IP_IHL → IP_PROTOCOL → IP_SRC_IP → IP_DST_IP → IP_FLAGS → IP_FRAG_OFFSET → IP_TOTAL_LEN
+  ✅ IPv4协议解析
+  ✅ IP头字段提取
+  ✅ TCP/UDP端口提取
+  ✅ 协议类型识别
+  ✅ 5-Tuple输出
+
+状态机设计:
+  - IDLE: 等待数据包
+  - IP_IHL: 读取IP头长度
+  - IP_PROTOCOL: 读取协议类型
+  - IP_SRC_IP: 读取源IP地址
+  - IP_DST_IP: 读取目的IP地址
+  - IP_FLAGS: 跳过标志和分片偏移
+  - IP_FRAG_OFFSET: 跳过IP头中的其他字段
+  - IP_TOTAL_LEN: 提取TCP/UDP端口
+
+输出信号:
+  - src_ip[31:0]: 源IP地址
+  - src_port[15:0]: 源端口
+  - dst_ip[31:0]: 目的IP地址
+  - dst_port[15:0]: 目的端口
+  - protocol[7:0]: 协议类型
+  - tuple_valid: 5-Tuple有效信号
+  - tuple_last: 包结束信号
+
+================================================================================
+Task 15.2: Enhanced Match Engine (Patch)
+================================================================================
+
+功能描述:
+  抗碰撞ACL匹配引擎
+  - 使用CRC16映射到4K深度BRAM
+  - 使用2-way Set Associative（每个Hash桶存2个指纹）
+  - 命中且指纹匹配 → Drop
+
+实现文件: rtl/security/acl_match_engine.sv
+
+核心功能:
+  ✅ CRC16-CCITT哈希算法
+  ✅ 2-way Set Associative BRAM
+  ✅ 4K深度存储 (4096个条目)
+  ✅ Tag比较（完整5-Tuple）
+  ✅ ACL命中检测
+  ✅ ACL丢弃信号
+  ✅ 命中/未命中计数器
+
+CRC16算法:
+  - CRC16-CCITT标准
+  - 多项式: 0x1021
+  - 输入: 完整5-Tuple (104-bit)
+  - 输出: 16-bit哈希值
+
+2-way Set Associative设计:
+  - Way 0: bram_way0[4096]
+  - Way 1: bram_way1[4096]
+  - Tag: 完整5-Tuple (104-bit)
+  - 比较逻辑: 并行比较两个Way的Tag
+  - 优先级: Way 0优先
+
+抗碰撞机制:
+  - 使用CRC16而非CRC8增加哈希空间
+  - 2-way Set Associative减少碰撞
+  - 完整Tag比较确保精确匹配
+
+ACL逻辑:
+  - 计算CRC16哈希
+  - 查找BRAM中的两个Way
+  - 比较Tag
+  - 命中: acl_hit=1, acl_drop=1
+  - 未命中: acl_hit=0, acl_drop=0
+
+状态输出:
+  - acl_hit: ACL命中信号
+  - acl_drop: ACL丢弃信号（命中时为1）
+  - hit_way[1:0]: 命中的Way (01=Way0, 10=Way1)
+  - hit_count[31:0]: 命中计数器
+  - miss_count[31:0]: 未命中计数器
+
+================================================================================
+Testbench实现
+================================================================================
+
+文件: tb/tb_day16_acl.sv
+行数: 500+行
+
+测试用例:
+  ✅ Test 1: 5-Tuple Extraction
+     - 发送IPv4数据包
+     - 验证5-Tuple提取正确性
+     - 检查Source IP, Source Port, Destination IP, Destination Port, Protocol
+
+  ✅ Test 2: ACL Entry Addition and Match
+     - 添加ACL条目
+     - 发送相同5-Tuple的包
+     - 验证ACL命中和丢弃
+
+  ✅ Test 3: ACL Miss (Different 5-Tuple)
+     - 发送不同5-Tuple的包
+     - 验证ACL未命中
+     - 检查未命中计数器
+
+  ✅ Test 4: ACL Clear
+     - 清空ACL
+     - 发送包
+     - 验证ACL已清空
+
+测试任务:
+  - send_ipv4_packet: 发送IPv4数据包
+  - add_acl_entry: 添加ACL条目
+  - clear_acl: 清空ACL
+
+================================================================================
+仿真脚本
+================================================================================
+
+TCL脚本: run_day16_sim.tcl
+批处理: run_day16_sim.bat
+编译列表: day16_compile.prj
+
+使用方法:
+  1. Windows: 运行 run_day16_sim.bat
+  2. Linux: vivado -mode batch -source run_day16_sim.tcl
+
+预期输出:
+  - tb_day16_acl.vcd (波形文件)
+  - compile.log (编译日志)
+  - simulate.log (仿真日志)
+
+================================================================================
+静态验证结果
+================================================================================
+
+总检查项: 37
+通过: 37
+失败: 0
+通过率: 100%
+
+检查分类:
+  Task 15.1: 8/8 ✅
+  Task 15.2: 10/10 ✅
+  Testbench: 11/11 ✅
+  仿真脚本: 8/8 ✅
+
+================================================================================
+文件清单
+================================================================================
+
+新增安全模块:
+  ✅ rtl/security/five_tuple_extractor.sv (7.0KB)
+  ✅ rtl/security/acl_match_engine.sv (7.5KB)
+
+Testbench:
+  ✅ tb/tb_day16_acl.sv (14KB)
+
+仿真脚本:
+  ✅ run_day16_sim.tcl (2.8KB)
+  ✅ run_day16_sim.bat (1.3KB)
+  ✅ day16_compile.prj (1.4KB)
+
+验证脚本:
+  ✅ verify_day16.sh (6.2KB)
+
+报告文档:
+  ✅ DAY16_COMPLETION_REPORT.txt (新创建)
+  ✅ DAY16_SUMMARY.txt (新创建)
+
+================================================================================
+技术亮点
+================================================================================
+
+1. 5-Tuple提取
+   - 完整的IPv4协议解析
+   - TCP/UDP端口提取
+   - 协议类型识别
+   - 状态机驱动
+
+2. CRC16哈希
+   - CRC16-CCITT标准算法
+   - 完整5-Tuple哈希
+   - 快速查找索引
+
+3. 2-way Set Associative
+   - 抗碰撞设计
+   - 并行Tag比较
+   - 优先级选择
+
+4. BRAM存储
+   - 4K深度存储
+   - 每个条目存储完整5-Tuple
+   - 高效内存利用
+
+5. ACL逻辑
+   - 命中且丢弃
+   - 未命中通过
+   - 计数器统计
+
+================================================================================
+系统集成
+================================================================================
+
+安全模块集成点:
+  1. 5-Tuple Extractor
+     - 位置: RX Parser之后
+     - 功能: 提取5-Tuple
+     - 输出: 完整5-Tuple
+
+  2. ACL Match Engine
+     - 位置: Crypto Engine之前
+     - 功能: ACL匹配和丢弃
+     - 输出: Drop信号
+
+数据流:
+  RX → RX Parser → 5-Tuple Extractor → ACL Match Engine → Crypto Engine → TX Stack
+
+ACL配置:
+  - AXI-Lite接口配置ACL
+  - 支持动态添加条目
+  - 支持清空ACL
+
+================================================================================
+后续步骤
+================================================================================
+
+1. 运行实际仿真:
+   Windows: run_day16_sim.bat
+   Linux: vivado -mode batch -source run_day16_sim.tcl
+
+2. 查看仿真结果:
+   波形: GTKWave tb_day16_acl.vcd
+   日志: compile.log, simulate.log
+
+3. 集成到系统:
+   - 集成到主系统
+   - 测试端到端功能
+   - 验证安全性
+
+4. 上板测试:
+   - 综合和实现
+   - 生成bitstream
+   - FPGA上板测试
+
+5. 性能和安全评估:
+   - 吞吐量测试
+   - 延迟测试
+   - 功耗测试
+   - 安全审计
+
+================================================================================
+验收总结
+================================================================================
+
+Task 15.1: 5-Tuple Extraction ✅
+  ✅ IPv4协议解析
+  ✅ Source IP提取
+  ✅ Source Port提取
+  ✅ Destination IP提取
+  ✅ Destination Port提取
+  ✅ Protocol提取
+  ✅ 状态机实现
+
+Task 15.2: Enhanced Match Engine (Patch) ✅
+  ✅ CRC16-CCITT哈希
+  ✅ 4K深度BRAM
+  ✅ 2-way Set Associative
+  ✅ 完整Tag比较
+  ✅ ACL命中检测
+  ✅ ACL丢弃信号
+  ✅ 命中/未命中计数器
+
+Testbench: ✅
+  ✅ 4个测试用例全部实现
+  ✅ 所有任务实现
+
+仿真脚本: ✅
+  ✅ TCL script: run_day16_sim.tcl
+  ✅ Batch script: run_day16_sim.bat
+  ✅ Compile list: day16_compile.prj
+
+验证: ✅
+  ✅ 37/37检查通过
+  ✅ 100%通过率
+
+================================================================================
+最终结论
+================================================================================
+
+Day 16任务已完成:
+  ✅ Task 15.1: 5-Tuple Extraction
+  ✅ Task 15.2: Enhanced Match Engine (Patch)
+  ✅ Testbench已创建
+  ✅ 仿真脚本已创建
+  ✅ 静态验证全部通过 (37/37)
+
+================================================================================
+Day 16: 硬件防火墙(ACL) - 任务完成 ✅
+================================================================================
+
+完成时间: 2026-01-31
+验证通过: 100% (37/37)

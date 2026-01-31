@@ -197,8 +197,8 @@ module dma_subsystem #(
         // Read Port (From Arbiter)
         .i_rd_en (pbm_ren_final), 
         .o_rd_data (pbm_rdata),
-        .o_rd_valid (), .o_rd_empty (pbm_empty),
-        .o_buffer_usage()
+        .o_rd_valid (pbm_rvalid), .o_rd_empty (pbm_empty),
+        .o_buffer_usage(pbm_usage), .o_rollback_active(pbm_rollback)
     );
 
     // --- 3.4 DMA Engine ---

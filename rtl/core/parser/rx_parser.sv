@@ -43,6 +43,7 @@ module rx_parser #(
     logic [15:0] global_word_cnt;
     logic [15:0] ip_total_len;
     logic [15:0] udp_len;
+    logic [3:0]  ihl;
     
     // 内部寄存器用于锁存提取的信息
     logic [47:0] src_mac_reg;
@@ -58,8 +59,17 @@ module rx_parser #(
     assign o_pbm_werror = s_axis_tuser; 
 
     // Meta Output
-    assign o_meta_data  = udp_len - 16'd8; 
-    assign o_meta_valid = s_axis_tlast && (state == PAYLOAD) && !s_axis_tuser;
+    logic [15:0] payload_len;
+    logic [15:0] ip_header_bytes;
+    logic       malformed_check;
+    
+    assign payload_len = udp_len - 16'd8;
+    assign ip_header_bytes = ihl * 4;
+    assign malformed_check = (udp_len > (ip_total_len - ip_header_bytes));
+    
+    assign o_meta_data  = payload_len;
+    assign o_meta_valid = s_axis_tlast && (state == PAYLOAD) && !s_axis_tuser && 
+                           (payload_len[3:0] == 4'h0) && !malformed_check;
     
     // Info Output
     assign o_rec_src_mac  = src_mac_reg;
@@ -108,12 +118,13 @@ module rx_parser #(
                     if (s_axis_tvalid) begin
                         global_word_cnt <= global_word_cnt + 1;
                         if (global_word_cnt == 4) ip_total_len <= s_axis_tdata[31:16];
+                        if (global_word_cnt == 4) ihl <= s_axis_tdata[3:0];
                         
                         // Word 7: Checksum, SrcIP Hi
                         if (global_word_cnt == 7) src_ip_reg[31:16] <= s_axis_tdata[15:0];
                         // Word 8: SrcIP Lo, DstIP Hi
                         if (global_word_cnt == 8) src_ip_reg[15:0]  <= s_axis_tdata[31:16];
-
+ 
                         if (global_word_cnt == 8) state <= UDP_HDR; // Simplify jump
                     end
                 end
@@ -128,7 +139,13 @@ module rx_parser #(
                         // Word 10: UDP DstPort, UDP Len
                         if (global_word_cnt == 10) begin
                             udp_len <= s_axis_tdata[15:0];
-                            state <= PAYLOAD;
+                            // [Day 2 Patch] Alignment check: payload must be 16-byte aligned
+                            if (((s_axis_tdata[15:0] - 16'd8) & 16'h000F) != 16'd0)
+                                state <= DROP;
+                            else if (malformed_check)
+                                state <= DROP;
+                            else
+                                state <= PAYLOAD;
                         end
                     end
                 end

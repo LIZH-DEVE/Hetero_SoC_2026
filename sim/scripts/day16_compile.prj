@@ -1,0 +1,65 @@
+# Day 16: Hardware Firewall (ACL) - File List
+# Task 15.1: 5-Tuple Extraction
+# Task 15.2: Enhanced Match Engine (Patch)
+
+# Security modules (new)
+sv rtl/security/five_tuple_extractor.sv
+sv rtl/security/acl_match_engine.sv
+
+# Previous security modules
+sv rtl/security/config_packet_auth.sv
+sv rtl/security/key_vault.sv
+
+# Package files
+sv rtl/inc/pkg_axi_stream.sv
+
+# Core modules
+sv rtl/core/axil_csr.sv
+sv rtl/core/async_fifo.sv
+sv rtl/core/gearbox_128_to_32.sv
+
+# Crypto modules
+v rtl/core/crypto/aes_core.v
+v rtl/core/crypto/aes_decipher_block.v
+v rtl/core/crypto/aes_encipher_block.v
+v rtl/core/crypto/aes_inv_sbox.v
+v rtl/core/crypto/aes_key_mem.v
+v rtl/core/crypto/aes_sbox.v
+v rtl/core/crypto/get_cki.v
+v rtl/core/crypto/key_expansion.v
+v rtl/core/crypto/one_round_for_encdec.v
+v rtl/core/crypto/one_round_for_key_exp.v
+v rtl/core/crypto/sbox_replace.v
+v rtl/core/crypto/transform_for_encdec.v
+v rtl/core/crypto/transform_for_key_exp.v
+v rtl/core/crypto/sm4_encdec.v
+v rtl/core/crypto/sm4_top.v
+sv rtl/core/crypto/crypto_core.sv
+sv rtl/core/crypto/crypto_engine.sv
+sv rtl/core/crypto/crypto_bridge_top.sv
+
+# Parser modules
+sv rtl/core/parser/rx_parser.sv
+sv rtl/core/parser/arp_responder.sv
+
+# TX modules
+sv rtl/core/tx/tx_stack.sv
+
+# DMA modules
+sv rtl/core/dma/dma_master_engine.sv
+sv rtl/core/dma/dma_desc_fetcher.sv
+sv rtl/core/dma/dma_s2mm_mm2s_engine.sv
+
+# PBM modules
+sv rtl/core/pbm/pbm_controller.sv
+
+# Flow control
+sv rtl/flow/credit_manager.sv
+
+# Top level
+sv rtl/top/packet_dispatcher.sv
+sv rtl/top/crypto_dma_subsystem.sv
+sv rtl/top/dma_subsystem.sv
+
+# Testbench
+sv tb/tb_day16_acl.sv

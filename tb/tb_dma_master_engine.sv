@@ -161,4 +161,20 @@ module tb_dma_master_engine;
         $finish;
     end
 
+    // =========================================================
+    // 5. BFM Verification Tasks
+    // =========================================================
+    
+    // Task: 检查地址对齐
+    task check_alignment(input [31:0] addr, input string test_name);
+        begin
+            if (addr[2:0] != 3'b000) begin
+                $display("[ERROR] %s: Address 0x%08h is NOT 8-byte aligned!", test_name, addr);
+                $display("        Address[2:0] = %b (should be 000)", addr[2:0]);
+            end else begin
+                $display("[PASS] %s: Address 0x%08h is properly aligned", test_name, addr);
+            end
+        end
+    endtask
+ 
 endmodule

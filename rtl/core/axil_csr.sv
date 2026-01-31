@@ -42,6 +42,15 @@ module axil_csr #(
     output logic                   o_hw_init,     // Bit 1: HW Init Trigger (Pulse)
     output logic                   o_algo_sel,    // Bit 2: 0=AES, 1=SM4
     output logic                   o_enc_dec,     // Bit 3: 0=Dec, 1=Enc
+    output logic                   o_s2mm_en,     // Bit 4: S2MM Enable
+    output logic                   o_mm2s_en,     // Bit 5: MM2S Enable
+    
+    // --- S2MM/MM2S Interface (0x20 - 0x24) ---
+    output logic [31:0]            o_s2mm_addr,   // 0x20: S2MM Address
+    output logic [31:0]            o_s2mm_data,   // 0x24: S2MM Data
+    
+    // --- Loopback Mode (0x48) ---
+    output logic [1:0]             o_loopback_mode, // Bit[1:0]: 0=Normal, 1=DDR Loopback, 2=PBM Passthrough
 
     // --- Linear DMA Config (0x08, 0x0C) ---
     output logic [31:0]            o_base_addr,
@@ -52,7 +61,8 @@ module axil_csr #(
 
     // --- Cache & Debug (0x40, 0x44) ---
     output logic                   o_cache_flush,
-    input  logic [31:0]            i_acl_cnt,
+    input  logic                   i_acl_inc,    // ACL Collision Increment Signal
+    output logic [31:0]            o_acl_cnt,    // ACL Collision Counter Output
 
     // --- [Day 11 New] Descriptor Ring Interface (0x50 - 0x5C) ---
     output logic [31:0]            o_ring_base,   // 0x50: Ring Base Address
@@ -70,6 +80,15 @@ module axil_csr #(
     // =========================================================================
     // 0x00: Control Register
     logic [31:0] reg_ctrl; 
+    
+    // [Day 11] 0x08: S2MM/MM2S Address
+    logic [31:0] reg_s2mm_addr;
+    
+    // [Day 11] 0x0C: S2MM/MM2S Data
+    logic [31:0] reg_s2mm_data;
+    
+    // [Day 11] 0x10: Loopback Mode
+    logic [31:0] reg_loopback_mode; 
 
     // 0x08: DMA Linear Base Address
     logic [31:0] reg_base_addr;
@@ -84,6 +103,7 @@ module axil_csr #(
     logic [31:0] reg_key3; // MSB
 
     // 0x40: Cache Control
+    logic [31:0] reg_acl_cnt;
     logic [31:0] reg_cache_ctrl;
 
     // [Day 11] 0x50: Ring Base Address
@@ -131,7 +151,9 @@ module axil_csr #(
             reg_ctrl <= 0; reg_base_addr <= 0; reg_len <= 0;
             reg_key0 <= 0; reg_key1 <= 0; reg_key2 <= 0; reg_key3 <= 0;
             reg_cache_ctrl <= 0;
+            reg_acl_cnt <= 0;
             reg_ring_base <= 0; reg_ring_tail <= 0; reg_ring_size <= 0;
+            reg_s2mm_addr <= 0; reg_s2mm_data <= 0; reg_loopback_mode <= 0;
             
             // Output Triggers & State
             o_start <= 0;
@@ -169,6 +191,11 @@ module axil_csr #(
             // Error Latching
             if (i_error) hw_error_latch <= 1;
 
+            
+            // ACL Counter Increment Logic
+            if (i_acl_inc && reg_acl_cnt < 32'hFFFFFFFF) begin
+                reg_acl_cnt <= reg_acl_cnt + 1'b1;
+            end
             // 3. Register Update
             if (write_en) begin
                 s_axil_bvalid <= 1; 
@@ -192,11 +219,22 @@ module axil_csr #(
                     end
                     8'h08: reg_base_addr <= apply_wstrb(reg_base_addr, s_axil_wdata, s_axil_wstrb);
                     8'h0C: reg_len       <= apply_wstrb(reg_len, s_axil_wdata, s_axil_wstrb);
-                    8'h10: reg_key0      <= apply_wstrb(reg_key0, s_axil_wdata, s_axil_wstrb);
-                    8'h14: reg_key1      <= apply_wstrb(reg_key1, s_axil_wdata, s_axil_wstrb);
-                    8'h18: reg_key2      <= apply_wstrb(reg_key2, s_axil_wdata, s_axil_wstrb);
-                    8'h1C: reg_key3      <= apply_wstrb(reg_key3, s_axil_wdata, s_axil_wstrb);
+                    
+                    // [Day 11] S2MM/MM2S Registers
+                    8'h20: reg_s2mm_addr  <= apply_wstrb(reg_s2mm_addr, s_axil_wdata, s_axil_wstrb);
+                    8'h24: reg_s2mm_data  <= apply_wstrb(reg_s2mm_data, s_axil_wdata, s_axil_wstrb);
+                    
+                    // Key Registers (shifted to make room for S2MM/MM2S)
+                    8'h28: reg_key0      <= apply_wstrb(reg_key0, s_axil_wdata, s_axil_wstrb);
+                    8'h2C: reg_key1      <= apply_wstrb(reg_key1, s_axil_wdata, s_axil_wstrb);
+                    8'h30: reg_key2      <= apply_wstrb(reg_key2, s_axil_wdata, s_axil_wstrb);
+                    8'h34: reg_key3      <= apply_wstrb(reg_key3, s_axil_wdata, s_axil_wstrb);
+                    
                     8'h40: reg_cache_ctrl<= apply_wstrb(reg_cache_ctrl, s_axil_wdata, s_axil_wstrb);
+                    8'h44: reg_acl_cnt   <= apply_wstrb(reg_acl_cnt, s_axil_wdata, s_axil_wstrb);
+                    
+                    // [Day 11] Loopback Mode Register
+                    8'h48: reg_loopback_mode <= apply_wstrb(reg_loopback_mode, s_axil_wdata, s_axil_wstrb);
                     
                     // [Day 11] Ring Registers
                     8'h50: reg_ring_base <= apply_wstrb(reg_ring_base, s_axil_wdata, s_axil_wstrb);
@@ -239,12 +277,22 @@ module axil_csr #(
                     8'h04: s_axil_rdata <= reg_status;
                     8'h08: s_axil_rdata <= reg_base_addr;
                     8'h0C: s_axil_rdata <= reg_len;
-                    8'h10: s_axil_rdata <= reg_key0;
-                    8'h14: s_axil_rdata <= reg_key1;
-                    8'h18: s_axil_rdata <= reg_key2;
-                    8'h1C: s_axil_rdata <= reg_key3;
+                    
+                    // [Day 11] S2MM/MM2S Registers
+                    8'h20: s_axil_rdata <= reg_s2mm_addr;
+                    8'h24: s_axil_rdata <= reg_s2mm_data;
+                    
+                    // Key Registers (shifted to make room for S2MM/MM2S)
+                    8'h28: s_axil_rdata <= reg_key0;
+                    8'h2C: s_axil_rdata <= reg_key1;
+                    8'h30: s_axil_rdata <= reg_key2;
+                    8'h34: s_axil_rdata <= reg_key3;
+                    
                     8'h40: s_axil_rdata <= reg_cache_ctrl;
-                    8'h44: s_axil_rdata <= i_acl_cnt; // External counter
+                    8'h44: s_axil_rdata <= reg_acl_cnt; // ACL Collision Counter
+                    
+                    // [Day 11] Loopback Mode Register
+                    8'h48: s_axil_rdata <= reg_loopback_mode;
                     
                     // [Day 11] Ring Registers
                     8'h50: s_axil_rdata <= reg_ring_base;
@@ -266,8 +314,18 @@ module axil_csr #(
     assign o_len         = reg_len;
     assign o_algo_sel    = reg_ctrl[2]; // Bit 2
     assign o_enc_dec     = reg_ctrl[3]; // Bit 3
+    assign o_s2mm_en     = reg_ctrl[4]; // Bit 4
+    assign o_mm2s_en     = reg_ctrl[5]; // Bit 5
     assign o_key         = {reg_key3, reg_key2, reg_key1, reg_key0};
     assign o_cache_flush = reg_cache_ctrl[0];
+    assign o_acl_cnt = reg_acl_cnt;
+    
+    // Day 11 S2MM/MM2S outputs
+    assign o_s2mm_addr    = reg_s2mm_addr;
+    assign o_s2mm_data    = reg_s2mm_data;
+    
+    // Day 11 Loopback mode output
+    assign o_loopback_mode = reg_loopback_mode[1:0]; // Bit[1:0]: 0=Normal, 1=DDR Loopback, 2=PBM Passthrough
     
     // Day 11 Ring outputs
     assign o_ring_base   = reg_ring_base;
