@@ -1,0 +1,9 @@
+﻿Rollback package for step01 fast_path fix
+Created: 2026-03-17 12:52:04
+
+Files:
+ - D:\FPGAhanjia\Hetero_SoC_2026_3\Hetero_SoC_2026\rtl\core\fast_path.sv
+ - D:\FPGAhanjia\Hetero_SoC_2026_3\Hetero_SoC_2026\tb\tb_day17_fastpath.sv
+ - D:\FPGAhanjia\Hetero_SoC_2026_3\Hetero_SoC_2026\tb\tb_fast_path_sanity.sv
+ - D:\FPGAhanjia\Hetero_SoC_2026_3\Hetero_SoC_2026\doc\reports\2026-03-17_full_function_verification\verification_results.md
+ - D:\FPGAhanjia\Hetero_SoC_2026_3\Hetero_SoC_2026\doc\reports\2026-03-17_full_function_verification\verification_gaps.md

@@ -1,0 +1,1 @@
+-debug "typical" -top "tb_dma_subsystem_crypto_encdec" -snapshot "tb_crypto_snap" -timescale "1ns/1ps" 

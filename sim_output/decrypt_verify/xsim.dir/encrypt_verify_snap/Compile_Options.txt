@@ -1,0 +1,1 @@
+-debug "typical" "tb_crypto_engine" -snapshot "encrypt_verify_snap" -timescale "1ns/1ps" 

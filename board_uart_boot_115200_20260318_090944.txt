@@ -1,0 +1,119 @@
+BOOT UART1 OK
+UART_BAUD=115200 ALT=230400
+UART_SR_PRE=0x0000000A
+UART_SR=0x0000000A
+UART_TXEMPTY=1
+1ABC
+2
+
+=======================================================
+   HCS_SOC Bare-Metal Crypto Full Test Suite (v2.1-DIAG)   
+=======================================================
+3[DIAG] About to read STATUS register at 0x43C00008...
+4[SYS] Initial STATUS: 0xACE00403
+STATUS=0xACE00403
+[VER] Hardware Version: 0xACE (V2.1 Patch Detected) [OK]
+FINGERPRINT=0xACE
+[DBG] PBM FIFO: wr_ptr=00, rd_ptr=00, empty=01, full=00
+5[DIAG] Starting AES encrypt test...
+
+--- [TEST] AES-128 Encryption ---
+[DEBUG] Writing REG_CTRL...
+[DEBUG] REG_CTRL done.
+[DEBUG] Pushing Data...>>>> done.
+[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+[OUT] Ciphertext: 
+    39 25 84 1D 02 DC 09 FB DC 11 85 97 19 6A 0B 32 
+[PASS] AES Encryption Correct!
+6[DIAG] Starting AES decrypt test...
+
+--- [TEST] AES-128 Decryption ---
+[DEBUG] Writing REG_CTRL...
+[DEBUG] REG_CTRL done.
+[DEBUG] Pushing Data...>>>> done.
+[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+[OUT] Plaintext: 
+    32 43 F6 A8 88 5A 30 8D 31 31 98 A2 E0 37 07 34 
+[PASS] AES Decryption Correct!
+7[DIAG] Starting SM4 test...
+
+--- [TEST] SM4-128 Encryption ---
+[DEBUG] Writing REG_CTRL...
+[DEBUG] REG_CTRL done.
+[DEBUG] Pushing Data...>>>> done.
+[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+[OUT] SM4 Cipher: 
+    68 1E DF 34 D2 06 96 5E 86 B3 E9 4F 53 6E 42 46 
+[PASS] SM4 Encryption Correct!
+
+--- [TEST] SM4-128 Decryption ---
+[DEBUG] Writing REG_CTRL...
+[DEBUG] REG_CTRL done.
+[DEBUG] Pushing Data...>>>> done.
+[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+[OUT] SM4 Plain: 
+    01 23 45 67 89 AB CD EF FE DC BA 98 76 54 32 10 
+[PASS] SM4 Decryption Correct!
+8[DIAG] Starting security test...
+
+--- [SECURITY] Hardware WREADY Back-pressure Test (20 Blocks) ---
+[SYS] Pushing 20 blocks FAST (skipping SYS_READY polling) to force AXI back-pressure...
+>>>>
+[SYS] Burst Write Finish.
+[SYS] Hardware Stall Cycles detected on AXI: 00000000 cycles.
+[SYS] STATUS at full load: 0xACE00401
+[SYS] Draining results to verify data integrity...
+[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+<[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+<[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+<[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+<[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+[DEBUG] Waiting for SYS_READY... Ready.
+[DEBUG] Pulling Data...<<<< done.
+
+[PASS] Hardware WREADY Back-pressure verified! No data lost under burst load.
+
+--- [SECURITY] Exception Test: Short Packet (1 Word) ---
+[SYS] Sending only 4 bytes (1 word) to 128-bit engine...
+[SYS] STATUS: 0xACE00447
+[SYS] Please use 'rst -system' in XSDB now to reset for next run.
+9
+[ALL TESTS FINISHED]
+!

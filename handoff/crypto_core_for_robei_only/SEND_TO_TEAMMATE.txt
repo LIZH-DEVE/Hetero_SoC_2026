@@ -1,0 +1,60 @@
+给学姐的直接说明
+
+1. 只导入 `rtl_robei_ready/` 里的 `.v` 文件。
+2. 主模块是 `crypto_robei_top`。
+3. 这个包不是 AX7020 工程，不包含 FSBL、BOOT、JTAG、网卡。
+4. 不要找 AXI-Lite，不要从总线封装开始连。
+5. 数据和密钥都是按 32-bit 一词一词送进去，模块内部会自己拼成 128-bit/256-bit。
+
+顶层信号用途
+
+- `clk` / `rst_n`：时钟和低有效复位
+- `algo_sel`：`0=AES`，`1=SM4`
+- `encdec`：`1=加密`，`0=解密`
+- `aes256_en`：AES 时 `1=256-bit key`，`0=128-bit key`；SM4 下忽略
+- `key_word[31:0]`：每次送 32-bit 密钥词
+- `key_word_valid`：密钥词有效
+- `key_word_last`：最后一个密钥词时拉高
+- `din_word[31:0]`：每次送 32-bit 数据词
+- `din_word_valid`：数据词有效
+- `din_word_last`：最后一个数据词时拉高
+- `start`：密钥和数据都装好后，给一个启动脉冲
+- `dout_word[31:0]`：输出数据词
+- `dout_word_valid`：输出词有效
+- `dout_word_last`：最后一个输出词
+- `busy`：模块忙
+- `done`：一次块处理完成
+
+怎么喂数据
+
+- AES-128：4 个 key_word
+- AES-256：8 个 key_word
+- SM4：4 个 key_word
+- 明文/密文块：固定 4 个 din_word
+
+32-bit 词顺序
+
+- 第 1 个词 -> `[127:96]`
+- 第 2 个词 -> `[95:64]`
+- 第 3 个词 -> `[63:32]`
+- 第 4 个词 -> `[31:0]`
+
+建议接法
+
+1. 先只连 `clk/rst_n`
+2. 再连 key 输入
+3. 再连 data 输入
+4. 用一个简单状态机或 UART 模块驱动 `*_valid`、`*_last` 和 `start`
+5. 观察 `dout_word_valid/dout_word_last/done`
+
+验证状态
+
+- 这套 `rtl_robei_ready/` 已经在 Vivado 里做过语法检查
+- AES-128 加解密 smoke test 通过
+- SM4 加解密 smoke test 通过
+- 但还没有在 Robei 软件里实际点图验证过
+
+如果需要更详细说明，看：
+
+- `docs/README_HANDOFF.md`
+- `docs/VERIFICATION.md`

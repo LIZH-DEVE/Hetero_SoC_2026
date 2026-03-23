@@ -1,0 +1,6 @@
+the_ROM_image:
+{
+  [bootloader] D:/FPGAhanjia/Hetero_SoC_2026_3/AX7020_2023.1/course_s2_vitis/06_net_test/Vitis/design_1_wrapper/zynq_fsbl/fsbl.elf
+  D:/FPGAhanjia/Hetero_SoC_2026_3/AX7020_2023.1/course_s2_vitis/06_net_test/Vitis/design_1_wrapper/hw/design_1_wrapper.bit
+  D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/ax7020_official_uart_smoke_app/build/ax7020_official_uart_smoke_app.elf
+}

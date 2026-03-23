@@ -1,0 +1,326 @@
+/**
+ * ============================================================
+ *  crypto_app.c — Linux Userspace AXI MMIO Crypto Engine Driver
+ * ============================================================
+ *  编译：  arm-linux-gnueabihf-gcc -std=c99 -O2 crypto_app.c -o crypto_app
+ *  或板上：gcc -std=c99 -O2 crypto_app.c -o crypto_app
+ *  运行：  sudo ./crypto_app
+ *
+ *  硬件前提：
+ *    1. FPGA 已加载含 crypto_accel_axi IP 的 bitstream (design_1.bd)
+ *    2. crypto_accel_axi 的 AXI 基地址 = 0x43C00000 (xparameters.h)
+ *    3. crypto_bridge_top 实例化于 AXI Slave 内部
+ *
+ *  寄存器映射 (提取自 crypto_accel_axi_slave_lite_v1_0_S00_AXI.v):
+ *    Offset  Dir  Function
+ *    0x00    W    slv_reg0: [0]=algo_sel  [1]=encdec  [2]=aes256_en
+ *    0x04    W    slv_reg1: PBM Data In (写入触发 pbm_valid_pulse)
+ *    0x08    R    slv_reg2: Status {29'd0, pbm_rd_en, tx_empty, sys_ready}
+ *    0x0C    R    slv_reg3: TX Data Out (读取触发 tx_rden_pulse)
+ *    0x10    W    slv_reg4: key_lo[ 31: 0]
+ *    0x14    W    slv_reg5: key_lo[ 63:32]
+ *    0x18    W    slv_reg6: key_lo[ 95:64]
+ *    0x1C    W    slv_reg7: key_lo[127:96]
+ *    0x20    W    slv_reg8: key_hi[ 31: 0]  (AES-256 only)
+ *    0x24    W    slv_reg9: key_hi[ 63:32]
+ *    0x28    W    slv_reg10:key_hi[ 95:64]
+ *    0x2C    W    slv_reg11:key_hi[127:96]
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/mman.h>
+
+/* ==========================================
+ * 1. 硬件寄存器读写宏 (Linux 用户态 MMIO 通用范式)
+ * ========================================== */
+#define HW_WRITE(base, offset, data)  (*(volatile uint32_t *)((uint8_t *)(base) + (offset)) = (data))
+#define HW_READ(base, offset)         (*(volatile uint32_t *)((uint8_t *)(base) + (offset)))
+
+/* ==========================================
+ * 2. 物理地址常量 (来自 Vivado Address Editor / xparameters.h)
+ * ========================================== */
+#define CRYPTO_PHYS_ADDR    0x43C00000
+#define CRYPTO_MAP_SIZE     0x10000     /* 64KB 映射窗口 */
+
+/* ==========================================
+ * 3. 寄存器偏移量 (来自 AXI Slave RTL)
+ * ========================================== */
+#define REG_CONFIG      0x00    /* slv_reg0: algo_sel[0], encdec[1], aes256_en[2] */
+#define REG_DATA_IN     0x04    /* slv_reg1: PBM 数据输入 (写入产生脉冲)         */
+#define REG_STATUS      0x08    /* slv_reg2: {pbm_rd_en, tx_empty, sys_ready}     */
+#define REG_DATA_OUT    0x0C    /* slv_reg3: 密文输出 (读取产生脉冲)             */
+#define REG_KEY_LO_0    0x10    /* slv_reg4:  key[31:0]                           */
+#define REG_KEY_LO_1    0x14    /* slv_reg5:  key[63:32]                          */
+#define REG_KEY_LO_2    0x18    /* slv_reg6:  key[95:64]                          */
+#define REG_KEY_LO_3    0x1C    /* slv_reg7:  key[127:96]                         */
+#define REG_KEY_HI_0    0x20    /* slv_reg8:  key[159:128] (AES-256)              */
+#define REG_KEY_HI_1    0x24    /* slv_reg9:  key[191:160]                        */
+#define REG_KEY_HI_2    0x28    /* slv_reg10: key[223:192]                        */
+#define REG_KEY_HI_3    0x2C    /* slv_reg11: key[255:224]                        */
+
+/* 状态位掩码 */
+#define STATUS_SYS_READY    0x01    /* Bit 0: 引擎空闲, 可接收数据 */
+#define STATUS_TX_EMPTY     0x02    /* Bit 1: 输出 FIFO 为空       */
+
+/* 算法/模式配置 */
+#define ALGO_AES            0       /* algo_sel = 0 */
+#define ALGO_SM4            1       /* algo_sel = 1 */
+#define MODE_ENCRYPT        0       /* encdec = 0: 加密 (RTL: encdec_reg 复位值为 1, 取反) */
+#define MODE_DECRYPT        1       /* encdec = 1: 解密 */
+
+/* ==========================================
+ * 4. 辅助函数
+ * ========================================== */
+
+/**
+ * 打印 16 字节十六进制数据块
+ */
+static void print_hex_block(const char *label, const uint8_t *data, int len)
+{
+    printf("%s: ", label);
+    for (int i = 0; i < len; i++) {
+        printf("%02X ", data[i]);
+        if ((i + 1) % 4 == 0) printf(" ");
+    }
+    printf("\n");
+}
+
+/**
+ * 等待引擎就绪 (sys_ready == 1)
+ * 加入 usleep(10) 避免总线带宽饥饿
+ * 加入超时保护避免无限挂起
+ */
+static int wait_sys_ready(void *base, int timeout_us)
+{
+    int elapsed = 0;
+    while ((HW_READ(base, REG_STATUS) & STATUS_SYS_READY) == 0) {
+        usleep(10);
+        elapsed += 10;
+        if (elapsed >= timeout_us) {
+            fprintf(stderr, "[FATAL] 等待 sys_ready 超时 (%d us)\n", timeout_us);
+            return -1;
+        }
+    }
+    return 0;
+}
+
+/**
+ * 等待输出 FIFO 非空 (tx_empty == 0)
+ */
+static int wait_tx_not_empty(void *base, int timeout_us)
+{
+    int elapsed = 0;
+    while ((HW_READ(base, REG_STATUS) & STATUS_TX_EMPTY) != 0) {
+        usleep(10);
+        elapsed += 10;
+        if (elapsed >= timeout_us) {
+            fprintf(stderr, "[FATAL] 等待 tx_not_empty 超时 (%d us)\n", timeout_us);
+            return -1;
+        }
+    }
+    return 0;
+}
+
+/**
+ * 向硬件注入 128-bit 密钥 (AES-128)
+ * key[0..15]: key[0] 为最高有效字节 (大端语序, 与 crypto_bridge_top 对齐)
+ */
+static void load_key_128(void *base, const uint8_t *key)
+{
+    /* RTL: combined_key_lo = {slv_reg7, slv_reg6, slv_reg5, slv_reg4}
+     *      即 slv_reg7 对应 key[127:96], slv_reg4 对应 key[31:0]
+     *      key[0] 去往 key[127:120] -> slv_reg7 的最高字节
+     */
+    for (int i = 0; i < 4; i++) {
+        uint32_t word = ((uint32_t)key[i*4]     << 24) |
+                        ((uint32_t)key[i*4 + 1] << 16) |
+                        ((uint32_t)key[i*4 + 2] << 8)  |
+                        ((uint32_t)key[i*4 + 3]);
+        HW_WRITE(base, REG_KEY_LO_3 - i * 4, word);
+        /* i=0 -> REG_KEY_LO_3 (0x1C) = key[127:96]
+         * i=1 -> REG_KEY_LO_2 (0x18) = key[95:64]
+         * i=2 -> REG_KEY_LO_1 (0x14) = key[63:32]
+         * i=3 -> REG_KEY_LO_0 (0x10) = key[31:0]
+         */
+    }
+    printf("[KEY] 128-bit Key loaded to slv_reg4-7\n");
+}
+
+/**
+ * 处理单个 128-bit 数据块的加/解密
+ *
+ * 数据流:
+ *   1. 将 16 字节明文拆为 4 个 32-bit Word, 大端组装
+ *   2. 逐字写入 REG_DATA_IN (每次写入触发 pbm_valid_pulse)
+ *   3. crypto_bridge_top 收集 4 个 Word 后自动调度加密核
+ *   4. 轮询 STATUS, 等待 tx_empty 变为 0
+ *   5. 逐字从 REG_DATA_OUT 读出密文 (每次读取触发 tx_rden_pulse)
+ */
+static int process_block(void *base, const uint8_t *input, uint8_t *output)
+{
+    printf("[PUMP] Checkpoint 1: 等待引擎就绪...\n");
+    if (wait_sys_ready(base, 1000000) < 0) return -1;
+
+    /* 步骤 1+2: 大端拼装并逐字推入 PBM */
+    printf("[PUMP] Checkpoint 2: 推入 128-bit 数据块...\n");
+    for (int i = 0; i < 4; i++) {
+        uint32_t word = ((uint32_t)input[i*4]     << 24) |
+                        ((uint32_t)input[i*4 + 1] << 16) |
+                        ((uint32_t)input[i*4 + 2] << 8)  |
+                        ((uint32_t)input[i*4 + 3]);
+        HW_WRITE(base, REG_DATA_IN, word);
+        printf("  -> Word[%d] = 0x%08X written\n", i, word);
+        usleep(10);  /* 让总线消化这个写事务 */
+    }
+
+    /* 步骤 3+4: 轮询等待输出就绪 */
+    printf("[PUMP] Checkpoint 3: 等待密文输出...\n");
+    if (wait_tx_not_empty(base, 5000000) < 0) return -1;
+
+    /* 步骤 5: 逐字读出密文 */
+    printf("[PUMP] Checkpoint 4: 读取密文...\n");
+    for (int i = 0; i < 4; i++) {
+        uint32_t word = HW_READ(base, REG_DATA_OUT);
+        output[i*4]     = (uint8_t)((word >> 24) & 0xFF);
+        output[i*4 + 1] = (uint8_t)((word >> 16) & 0xFF);
+        output[i*4 + 2] = (uint8_t)((word >> 8)  & 0xFF);
+        output[i*4 + 3] = (uint8_t)(word & 0xFF);
+        printf("  -> Word[%d] = 0x%08X read\n", i, word);
+        usleep(10);
+    }
+
+    return 0;
+}
+
+/* ==========================================
+ * 5. 主程序入口
+ * ========================================== */
+int main(int argc, char *argv[])
+{
+    /* 禁用 stdout 缓冲: 每个字符实时推出, CPU 冻死前的最后一个探针能被看到 */
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
+
+    printf("\n");
+    printf("=======================================================\n");
+    printf("  HCS_SOC Linux Crypto Engine Test (mmap + /dev/mem)\n");
+    printf("=======================================================\n");
+
+    /* ---- Step 1: 打开 /dev/mem 获取物理内存访问权 ---- */
+    printf("[SYS] Checkpoint 0: Opening /dev/mem...\n");
+    int fd = open("/dev/mem", O_RDWR | O_SYNC);
+    if (fd < 0) {
+        perror("[FATAL] 无法打开 /dev/mem (需要 root 权限)");
+        return EXIT_FAILURE;
+    }
+    printf("[SYS] /dev/mem opened, fd = %d\n", fd);
+
+    /* ---- Step 2: mmap 将物理地址 0x43C00000 映射到用户态虚拟地址 ---- */
+    printf("[SYS] Checkpoint 1: mmap(0x%08X, size=0x%X)...\n",
+           CRYPTO_PHYS_ADDR, CRYPTO_MAP_SIZE);
+    void *map_base = mmap(NULL, CRYPTO_MAP_SIZE,
+                          PROT_READ | PROT_WRITE,
+                          MAP_SHARED,
+                          fd, CRYPTO_PHYS_ADDR);
+    if (map_base == MAP_FAILED) {
+        perror("[FATAL] mmap 失败");
+        close(fd);
+        return EXIT_FAILURE;
+    }
+    printf("[SYS] mmap 成功, 虚拟基地址 = %p\n", map_base);
+
+    /* ---- Step 3: 安全探测 AXI 总线连通性 ---- */
+    printf("[SYS] Checkpoint 2: 即将发起第一次 AXI Read (REG_STATUS @ 0x%08X+0x08)...\n",
+           CRYPTO_PHYS_ADDR);
+    printf("[SYS] >>> 如果下一行没有出现, 说明 AXI 总线死锁 <<<\n");
+
+    volatile uint32_t status = HW_READ(map_base, REG_STATUS);
+
+    printf("[SYS] >>> AXI Read 成功返回! <<<\n");
+    printf("[SYS] STATUS Register = 0x%08X\n", status);
+    printf("  -> sys_ready  = %d\n", (status >> 0) & 1);
+    printf("  -> tx_empty   = %d\n", (status >> 1) & 1);
+    printf("  -> pbm_rd_en  = %d\n", (status >> 2) & 1);
+
+    if ((status & STATUS_SYS_READY) == 0) {
+        fprintf(stderr, "[WARN] 引擎未就绪! 可能 bitstream 未加载或 IP 未复位.\n");
+    }
+
+    /* ---- Step 4: 配置加密参数 ---- */
+    /*  slv_reg0[0] = algo_sel:   0=AES, 1=SM4
+     *  slv_reg0[1] = encdec:     0=加密, 1=解密
+     *  slv_reg0[2] = aes256_en:  0=AES-128, 1=AES-256
+     */
+    uint32_t config = ALGO_AES | (MODE_ENCRYPT << 1) | (0 << 2);  /* AES-128 加密 */
+    printf("[CFG] 写入配置: algo=AES, mode=ENCRYPT, aes256=off -> 0x%08X\n", config);
+    printf("[CFG] >>> 即将 AXI Write REG_CONFIG <<<\n");
+    HW_WRITE(map_base, REG_CONFIG, config);
+    printf("[CFG] >>> AXI Write 完成 <<<\n");
+
+    /* 回读验证 */
+    uint32_t config_rb = HW_READ(map_base, REG_CONFIG);
+    printf("[CFG] 配置回读: 0x%08X %s\n", config_rb,
+           (config_rb == config) ? "[MATCH]" : "[MISMATCH!]");
+
+    /* ---- Step 5: 加载测试密钥 ---- */
+    const uint8_t test_key[16] = {
+        0x2B, 0x7E, 0x15, 0x16,
+        0x28, 0xAE, 0xD2, 0xA6,
+        0xAB, 0xF7, 0x15, 0x88,
+        0x09, 0xCF, 0x4F, 0x3C
+    };
+    print_hex_block("[KEY] AES-128 Key", test_key, 16);
+    load_key_128(map_base, test_key);
+
+    /* ---- Step 6: 注入测试明文并加密 ---- */
+    const uint8_t test_plaintext[16] = {
+        0x32, 0x43, 0xF6, 0xA8,
+        0x88, 0x5A, 0x30, 0x8D,
+        0x31, 0x31, 0x98, 0xA2,
+        0xE0, 0x37, 0x07, 0x34
+    };
+    uint8_t ciphertext[16] = {0};
+
+    print_hex_block("[IN ] Plaintext", test_plaintext, 16);
+
+    printf("\n[ENC] === 开始加密 ===\n");
+    int ret = process_block(map_base, test_plaintext, ciphertext);
+    if (ret < 0) {
+        fprintf(stderr, "[FATAL] 加密过程失败!\n");
+    } else {
+        print_hex_block("[OUT] Ciphertext", ciphertext, 16);
+
+        /* NIST AES-128 已知答案:
+         * Key:       2B7E1516 28AED2A6 ABF71588 09CF4F3C
+         * Plaintext: 3243F6A8 885A308D 313198A2 E0370734
+         * Expected:  3925841D 02DC09FB DC118597 196A0B32
+         */
+        const uint8_t expected[16] = {
+            0x39, 0x25, 0x84, 0x1D,
+            0x02, 0xDC, 0x09, 0xFB,
+            0xDC, 0x11, 0x85, 0x97,
+            0x19, 0x6A, 0x0B, 0x32
+        };
+        print_hex_block("[REF] Expected ", expected, 16);
+
+        if (memcmp(ciphertext, expected, 16) == 0) {
+            printf("[PASS] ★★★ AES-128 加密结果与 NIST 标准完全匹配! ★★★\n");
+        } else {
+            printf("[FAIL] 加密结果与预期不符, 需要检查硬件逻辑.\n");
+        }
+    }
+
+    /* ---- Step 7: 清理资源 ---- */
+    printf("\n[SYS] 清理 mmap 映射...\n");
+    munmap(map_base, CRYPTO_MAP_SIZE);
+    close(fd);
+    printf("[SYS] 完成. 退出.\n");
+    printf("=======================================================\n");
+
+    return (ret < 0) ? EXIT_FAILURE : EXIT_SUCCESS;
+}

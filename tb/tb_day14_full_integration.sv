@@ -236,24 +236,6 @@ module tb_day14_full_integration;
         end
     endtask
 
-    task axi_read;
-        input [31:0] addr;
-        output [31:0] data;
-        begin
-            @(posedge clk);
-            m_axi_araddr <= addr;
-            m_axi_arvalid <= 1;
-            wait(m_axi_arready);
-            m_axi_arvalid <= 0;
-
-            wait(m_axi_rvalid);
-            data = m_axi_rdata;
-            m_axi_rready <= 1;
-            @(posedge clk);
-            m_axi_rready <= 0;
-        end
-    endtask
-
     // ========================================================================
     // Pcap File Generation Task
     // ========================================================================
@@ -378,6 +360,8 @@ module tb_day14_full_integration;
     logic [31:0] rdata;
     logic [127:0] crypto_key;
     logic [127:0] crypto_iv;
+    logic [31:0] normal_packet [0:15];
+    logic [31:0] malformed_packet [0:7];
 
     initial begin
         error_count = 0;
@@ -385,8 +369,6 @@ module tb_day14_full_integration;
         tx_axis_tready = 1;
         m_axi_awready = 1;
         m_axi_wready = 1;
-        m_axi_arready = 1;
-        m_axi_rvalid = 1;
         m_axi_bvalid = 1;
         m_axi_s2mm_awready = 1;
         m_axi_s2mm_wready = 1;
@@ -445,9 +427,6 @@ module tb_day14_full_integration;
         // 验收标准4: 无Malformed Packet
         $display("验收标准4: 无Malformed Packet检测");
         $display("----------------------------------------");
-
-        logic [31:0] normal_packet[0:15];
-        logic [31:0] malformed_packet[0:7];
 
         for (int i = 0; i < 16; i++) begin
             normal_packet[i] = 32'hAABBCC00 + i;

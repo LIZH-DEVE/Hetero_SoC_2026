@@ -1,0 +1,19 @@
+open_project D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/HCS_SOC.xpr
+update_compile_order -fileset sources_1
+reset_run system_dma_subsystem_v2_wra_0_0_synth_1
+launch_runs system_dma_subsystem_v2_wra_0_0_synth_1 -jobs 8
+wait_on_run system_dma_subsystem_v2_wra_0_0_synth_1
+open_run system_dma_subsystem_v2_wra_0_0_synth_1
+report_utilization -file D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/HCS_SOC.runs/system_dma_subsystem_v2_wra_0_0_synth_1/util_6lane_ip.rpt
+close_design
+reset_run synth_1
+reset_run impl_1
+launch_runs synth_1 -jobs 8
+wait_on_run synth_1
+launch_runs impl_1 -to_step place_design -jobs 8
+wait_on_run impl_1
+open_run impl_1
+report_utilization -file D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/HCS_SOC.runs/impl_1/util_6lane_impl.rpt
+report_timing_summary -file D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/HCS_SOC.runs/impl_1/timing_6lane_impl.rpt
+close_project
+exit

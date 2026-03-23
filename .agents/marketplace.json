@@ -1,0 +1,100 @@
+{
+  "name": "project-skills",
+  "owner": {
+    "name": "User",
+    "email": "user@example.com"
+  },
+  "metadata": {
+    "description": "Project skills for document processing and development",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "document-skills",
+      "description": "Document processing suite including Excel, Word, PowerPoint, and PDF capabilities",
+      "source": "C:/Users/Li/.agents/skills",
+      "strict": false,
+      "skills": [
+        "xlsx",
+        "docx",
+        "pptx",
+        "pdf"
+      ]
+    },
+    {
+      "name": "development-skills",
+      "description": "Development and testing skills",
+      "source": "C:/Users/Li/.agents/skills",
+      "strict": false,
+      "skills": [
+        "mcp-builder",
+        "skill-creator",
+        "webapp-testing",
+        "web-artifacts-builder",
+        "systematic-debugging",
+        "test-driven-development",
+        "subagent-driven-development"
+      ]
+    },
+    {
+      "name": "design-skills",
+      "description": "Creative design skills",
+      "source": "C:/Users/Li/.agents/skills",
+      "strict": false,
+      "skills": [
+        "frontend-design",
+        "canvas-design",
+        "theme-factory",
+        "algorithmic-art",
+        "brand-guidelines",
+        "slack-gif-creator"
+      ]
+    },
+    {
+      "name": "workflow-skills",
+      "description": "Development workflow and planning skills",
+      "source": "C:/Users/Li/.agents/skills",
+      "strict": false,
+      "skills": [
+        "brainstorming",
+        "writing-plans",
+        "executing-plans",
+        "verification-before-completion",
+        "finishing-a-development-branch",
+        "using-git-worktrees",
+        "dispatching-parallel-agents"
+      ]
+    },
+    {
+      "name": "code-review-skills",
+      "description": "Code review and quality skills",
+      "source": "C:/Users/Li/.agents/skills",
+      "strict": false,
+      "skills": [
+        "requesting-code-review",
+        "receiving-code-review"
+      ]
+    },
+    {
+      "name": "communication-skills",
+      "description": "Communication and writing skills",
+      "source": "C:/Users/Li/.agents/skills",
+      "strict": false,
+      "skills": [
+        "internal-comms",
+        "doc-coauthoring",
+        "Humanizer-zh",
+        "writing-skills"
+      ]
+    },
+    {
+      "name": "power-skills",
+      "description": "Advanced capability skills",
+      "source": "C:/Users/Li/.agents/skills",
+      "strict": false,
+      "skills": [
+        "using-superpowers"
+      ]
+    }
+  ]
+}

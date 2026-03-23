@@ -1,0 +1,3 @@
+step=03
+scope=fast_path eligible+bypass/drop semantics verified; day17 tb green
+parent_zip=D:\FPGAhanjia\Hetero_SoC_2026_3\Hetero_SoC_2026\rollback_packages\20260317_1301_step02_fastpath_fixed.zip

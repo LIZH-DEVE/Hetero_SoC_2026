@@ -2,7 +2,8 @@
 # Task 14.1: Config Packet Auth (Patch)
 # Task 14.2: Key Vault with DNA Binding (Updated)
 
-set proj_dir "D:/FPGAhanjia/Hetero_SoC_2026"
+set script_dir [file normalize [file dirname [info script]]]
+set proj_dir [file normalize [file join $script_dir .. ..]]
 cd $proj_dir
 
 puts "=========================================="
@@ -16,7 +17,7 @@ puts ""
 puts "Step 1: Compiling RTL files..."
 puts "----------------------------------------"
 
-xvlog -sv -prj day15_compile.prj -log compile.log
+xvlog -sv -prj [file join $script_dir day15_compile.prj] -log compile.log
 if {$::errorCode != 0} {
     puts "ERROR: Compilation failed!"
     exit 1
@@ -31,8 +32,7 @@ puts "Step 2: Elaborating design..."
 puts "----------------------------------------"
 
 xelab -debug typical -relax -snapshot tb_day15_hsm_behav \
-      xil_defaultlib.tb_day15_hsm \
-      xil_defaultlib.glbl -log elaborate.log
+      xil_defaultlib.tb_day15_hsm -log elaborate.log
 
 if {$::errorCode != 0} {
     puts "ERROR: Elaboration failed!"

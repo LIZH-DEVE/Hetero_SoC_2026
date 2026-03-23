@@ -1,0 +1,1 @@
+"xil_defaultlib.tb_day16_acl" -s "tb_day16_acl_dbg" 

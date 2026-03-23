@@ -1,0 +1,1 @@
+-debug "typical" -relax -snapshot "tb_dma_ingress_security_chain_sanity_behav" "xil_defaultlib.tb_dma_ingress_security_chain_sanity" 

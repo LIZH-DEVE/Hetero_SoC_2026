@@ -116,13 +116,16 @@ module crypto_dma_subsystem #(
     // Internal Signals
     // =========================================================================
     logic                   csr_start, fetcher_start, final_start;
-    logic [31:0]            csr_addr, fetcher_addr, final_addr;
-    logic [31:0]            csr_len, fetcher_len, final_len;
-    logic                   csr_algo, fetcher_algo, final_algo;
+    (* mark_debug = "true" *) logic [31:0]            csr_addr, fetcher_addr, final_addr;
+    (* mark_debug = "true" *) logic [31:0]            csr_len, fetcher_len, final_len;
+    (* mark_debug = "true" *) logic                   csr_algo, fetcher_algo, final_algo;
+    logic                   csr_encdec;  // Encrypt/Decrypt control from CSR
     logic [31:0]            ring_base, ring_size;
     logic [15:0]            sw_tail, hw_head;
-    logic                   dma_done, hw_init;
-    logic [127:0]           csr_key;
+    logic                   dma_done, dma_error, dma_busy, hw_init;
+    (* mark_debug = "true" *) logic [127:0]           csr_key;
+    logic [127:0]            csr_key_hi;
+    logic                    csr_aes256_en;
     
     // S2MM/MM2S signals
     logic                   s2mm_en, mm2s_en;
@@ -130,21 +133,24 @@ module crypto_dma_subsystem #(
     logic [1:0]             loopback_mode;
     
     // PBM signals
-    logic [31:0]            pbm_data;
-    logic                   pbm_empty;
-    logic                   bridge_rd_pbm;
-    
+    (* mark_debug = "true" *) logic [31:0]            pbm_data;
+    (* mark_debug = "true" *) logic                   pbm_empty;
+    (* mark_debug = "true" *) logic                   bridge_rd_pbm;
+    (* mark_debug = "true" *) logic                   bridge_rd_valid;
+
     // Crypto Bridge signals
-    logic [31:0]            crypto_to_dma_data;
-    logic                   crypto_to_dma_empty;
-    logic                   dma_req_rd;
-    
+    (* mark_debug = "true" *) logic [31:0]            crypto_to_dma_data;
+    (* mark_debug = "true" *) logic                   crypto_to_dma_empty;
+    (* mark_debug = "true" *) logic                   crypto_to_dma_last;
+    (* mark_debug = "true" *) logic                   dma_req_rd;
+    logic                                              bridge_tx_rd_en;
+
     // Loopback Mux signals
-    logic [31:0]            muxed_crypto_data;
-    logic                   muxed_crypto_empty;
-    logic [31:0]            tx_data_from_crypto;
-    logic                   tx_valid_from_crypto;
-    logic                   tx_last_from_crypto;
+    (* mark_debug = "true" *) logic [31:0]            muxed_crypto_data;
+    (* mark_debug = "true" *) logic                   muxed_crypto_empty;
+    (* mark_debug = "true" *) logic [31:0]            tx_data_from_crypto;
+    (* mark_debug = "true" *) logic                   tx_valid_from_crypto;
+    (* mark_debug = "true" *) logic                   tx_last_from_crypto;
     
     // DMA Engine internal signals
     logic [31:0]            dma_awaddr, dma_wdata;
@@ -191,7 +197,7 @@ module crypto_dma_subsystem #(
                 muxed_crypto_empty = crypto_to_dma_empty;
                 tx_data_from_crypto = crypto_to_dma_data;
                 tx_valid_from_crypto = !crypto_to_dma_empty;
-                tx_last_from_crypto = 1'b0;
+                tx_last_from_crypto = crypto_to_dma_last;
             end
             2'b01: begin  // DDR Loopback mode
                 muxed_crypto_data = crypto_to_dma_data;
@@ -205,7 +211,7 @@ module crypto_dma_subsystem #(
                 muxed_crypto_empty = crypto_to_dma_empty;
                 tx_data_from_crypto = crypto_to_dma_data;
                 tx_valid_from_crypto = !crypto_to_dma_empty;
-                tx_last_from_crypto = 1'b0;
+                tx_last_from_crypto = crypto_to_dma_last;
             end
             default: begin  // Default to Normal mode
                 muxed_crypto_data = crypto_to_dma_data;
@@ -278,6 +284,19 @@ module crypto_dma_subsystem #(
     // 5. Module Instantiations
     // =========================================================================
 
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            dma_busy <= 1'b0;
+        end else if (dma_done || dma_error) begin
+            dma_busy <= 1'b0;
+        end else if (final_start) begin
+            dma_busy <= 1'b1;
+        end
+    end
+
+    assign bridge_tx_rd_en = (loopback_mode == 2'b10) ? (tx_axis_tready && !crypto_to_dma_empty) :
+                                                   dma_req_rd;
+
     // CSR (Control and Status Registers)
     axil_csr #(.ADDR_WIDTH(ADDR_WIDTH), .DATA_WIDTH(DATA_WIDTH)) u_csr (
         .clk(clk), .rst_n(rst_n),
@@ -289,9 +308,10 @@ module crypto_dma_subsystem #(
         .o_start(csr_start), .o_base_addr(csr_addr), .o_len(csr_len),
         .o_ring_base(ring_base), .o_ring_size(ring_size),
         .o_sw_tail_ptr(sw_tail), .i_hw_head_ptr(hw_head),
-        .i_done(dma_done), .i_error(1'b0), .o_algo_sel(csr_algo),
-        .o_hw_init(hw_init), .o_key(csr_key),
-        .i_acl_cnt(32'd0),
+        .i_done(dma_done), .i_error(dma_error), .i_busy(dma_busy), .o_algo_sel(csr_algo),
+        .o_enc_dec(csr_encdec),
+        .o_hw_init(hw_init), .o_key(csr_key), .o_key_hi(csr_key_hi), .o_aes256_en(csr_aes256_en),
+        .i_acl_inc(1'b0), .o_acl_cnt(),
         .o_s2mm_en(s2mm_en), .o_mm2s_en(mm2s_en),
         .o_s2mm_addr(s2mm_addr), .o_s2mm_data(s2mm_data),
         .o_loopback_mode(loopback_mode)
@@ -322,7 +342,7 @@ module crypto_dma_subsystem #(
 
     dma_desc_fetcher #(.ADDR_WIDTH(ADDR_WIDTH)) u_fetcher (
         .clk(clk), .rst_n(rst_n),
-        .i_ring_base(ring_base), .i_ring_size(ring_size),
+        .i_ring_base(ring_base), .i_ring_size(ring_size), .i_ring_doorbell(1'b1),
         .i_sw_tail_ptr(sw_tail), .o_hw_head_ptr(hw_head),
         .o_dma_start(fetcher_start), .o_dma_addr(fetcher_addr),
         .o_dma_len(fetcher_len), .o_dma_algo(fetcher_algo),
@@ -338,20 +358,24 @@ module crypto_dma_subsystem #(
     pbm_controller #(.PBM_ADDR_WIDTH(14), .DATA_WIDTH(DATA_WIDTH)) u_pbm (
         .clk(clk), .rst_n(rst_n),
         .i_wr_valid(rx_wr_valid), .i_wr_data(rx_wr_data), .i_wr_last(rx_wr_last), .i_wr_error(1'b0),
-        .o_wr_ready(rx_wr_ready), .o_rd_data(pbm_data), .o_rd_empty(pbm_empty), .o_rd_valid(), .i_rd_en(bridge_rd_pbm), .o_buffer_usage(), .o_rollback_active()
+        .o_wr_ready(rx_wr_ready), .o_rd_data(pbm_data), .o_rd_empty(pbm_empty), .o_rd_valid(bridge_rd_valid), .i_rd_en(bridge_rd_pbm), .o_buffer_usage(), .o_rollback_active()
     );
 
     // Crypto Bridge
     crypto_bridge_top u_crypto_bridge (
         .clk(clk), .rst_n(rst_n),
         .i_algo_sel(final_algo),
+        .i_encdec(csr_encdec),
+        .i_aes256_en(csr_aes256_en),
         .i_key(csr_key),
+        .i_key_hi(csr_key_hi),
         .o_system_ready(),
-        .i_pbm_data(pbm_data), .i_pbm_empty(pbm_empty),
+        .i_pbm_data(pbm_data), .i_pbm_empty(pbm_empty), .i_pbm_valid(bridge_rd_valid),
         .o_pbm_rd_en(bridge_rd_pbm),
         .o_tx_data(crypto_to_dma_data),
+        .o_tx_last(crypto_to_dma_last),
         .o_tx_empty(crypto_to_dma_empty),
-        .i_tx_rd_en(dma_req_rd)
+        .i_tx_rd_en(bridge_tx_rd_en)
     );
 
     dma_master_engine #(.ADDR_WIDTH(ADDR_WIDTH), .DATA_WIDTH(DATA_WIDTH)) u_dma_engine (
@@ -360,6 +384,7 @@ module crypto_dma_subsystem #(
         .i_base_addr(final_addr),
         .i_total_len(final_len),
         .o_done(dma_done),
+        .o_error(dma_error),
         .i_fifo_rdata(muxed_crypto_data),
         .i_fifo_empty(muxed_crypto_empty),
         .o_fifo_ren(dma_req_rd),
@@ -378,3 +403,6 @@ module crypto_dma_subsystem #(
     );
 
 endmodule
+
+
+

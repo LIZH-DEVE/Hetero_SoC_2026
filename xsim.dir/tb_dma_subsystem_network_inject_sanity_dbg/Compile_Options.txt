@@ -1,0 +1,1 @@
+"xil_defaultlib.tb_dma_subsystem_network_inject_sanity" -s "tb_dma_subsystem_network_inject_sanity_dbg" 

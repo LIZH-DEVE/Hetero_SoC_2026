@@ -1,0 +1,3 @@
+step=05
+scope=report bugs 1-7 closed; fast_path coverage complete; rx_parser arp dummy removed
+parent_zip=D:\FPGAhanjia\Hetero_SoC_2026_3\Hetero_SoC_2026\rollback_packages\20260317_1450_step04_fastpath_counter_and_bp.zip

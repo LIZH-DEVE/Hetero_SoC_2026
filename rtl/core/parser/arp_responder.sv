@@ -1,187 +1,155 @@
 `timescale 1ns / 1ps
 
-/**
- * Module: arp_responder
- * Description: 完整的ARP应答器
- * Task 8.3: ARP Responder
- */
 module arp_responder (
     input  logic        clk,
     input  logic        rst_n,
-    
-    // --- AXI-Stream Input (ARP Request) ---
     input  logic [31:0] i_arp_data,
     input  logic        i_arp_valid,
     output logic        i_arp_ready,
-    
-    // --- AXI-Stream Output (ARP Reply) ---
     output logic [31:0] o_tx_data,
     output logic        o_tx_valid,
     input  logic        o_tx_ready,
-    
-    // --- Configuration ---
-    input  logic [47:0] i_local_mac,   // 本机MAC地址
-    input  logic [31:0] i_local_ip,    // 本机IP地址
-    input  logic        i_arp_enable   // 使能ARP响应
+    output logic [47:0] o_reply_dst_mac,
+    input  logic [47:0] i_local_mac,
+    input  logic [31:0] i_local_ip,
+    input  logic        i_arp_enable
 );
 
-    // =========================================================
-    // ARP协议字段定义
-    // =========================================================
-    localparam [15:0] ARP_HTYPE_ETHER = 16'h0001;  // Ethernet
-    localparam [15:0] ARP_PTYPE_IPV4 = 16'h0800;  // IPv4
-    localparam [15:0] ARP_HLEN_MAC  = 16'h0006;   // MAC地址长度
-    localparam [15:0] ARP_PLEN_IP  = 16'h0004;   // IP地址长度
-    localparam [15:0] ARP_OP_REQUEST= 16'h0001;  // ARP请求
-    localparam [15:0] ARP_OP_REPLY  = 16'h0002;  // ARP响应
+    localparam [31:0] ARP_WORD0_REQUEST = 32'h0001_0800;
+    localparam [31:0] ARP_WORD1_REQUEST = 32'h0604_0001;
+    localparam [31:0] ARP_WORD0_REPLY   = 32'h0001_0800;
+    localparam [31:0] ARP_WORD1_REPLY   = 32'h0604_0002;
+    localparam [2:0]  REPLY_LAST_WORD   = 3'd6;
 
-    // =========================================================
-    // 状态机定义
-    // =========================================================
-    typedef enum logic [2:0] {IDLE, PARSE_HT, PARSE_PT, PARSE_OP, CHECK_IP, BUILD_REPLY, SEND_REPLY} state_t;
-    state_t state, next_state;
+    typedef enum logic [1:0] {
+        IDLE,
+        CAPTURE_REQ,
+        CHECK_REQ,
+        SEND_REPLY
+    } state_t;
 
-    // =========================================================
-    // 内部信号定义
-    // =========================================================
-    logic [15:0] arp_htype;
-    logic [15:0] arp_ptype;
-    logic [7:0]  arp_hlen;
-    logic [7:0]  arp_plen;
-    logic [15:0] arp_operation;
-    logic [47:0] arp_src_mac;
-    logic [31:0] arp_src_ip;
-    logic [31:0] arp_dst_ip;
-    logic [47:0] arp_dst_mac;
+    state_t state;
 
-    logic [15:0] word_cnt;
-    logic        is_arp_request;
-    logic        ip_match;
+    logic [31:0] req_word0;
+    logic [31:0] req_word1;
+    logic [31:0] req_word2;
+    logic [31:0] req_word3;
+    logic [31:0] req_src_ip;
+    logic [31:0] req_dst_ip;
+    logic [2:0]  req_word_cnt;
+    logic [2:0]  tx_word_cnt;
+    logic [31:0] tx_data_reg;
+    logic        tx_valid_reg;
+    logic        request_matches;
 
-    // =========================================================
-    // ARP协议解析
-    // =========================================================
-    assign is_arp_request = (arp_operation == ARP_OP_REQUEST);
-    assign ip_match = (arp_dst_ip == i_local_ip) && i_arp_enable;
+    assign request_matches =
+        i_arp_enable &&
+        (req_word0 == ARP_WORD0_REQUEST) &&
+        (req_word1 == ARP_WORD1_REQUEST) &&
+        (req_dst_ip == i_local_ip);
+
+    assign i_arp_ready = i_arp_enable && ((state == IDLE) || (state == CAPTURE_REQ));
+    assign o_tx_valid = tx_valid_reg;
+    assign o_reply_dst_mac = {req_word2[31:16], req_word3};
+
+    function automatic logic [31:0] reply_word(input logic [2:0] word_idx);
+        begin
+            case (word_idx)
+                3'd0: reply_word = ARP_WORD0_REPLY;
+                3'd1: reply_word = ARP_WORD1_REPLY;
+                3'd2: reply_word = i_local_mac[47:16];
+                3'd3: reply_word = {i_local_mac[15:0], i_local_ip[31:16]};
+                3'd4: reply_word = {i_local_ip[15:0], req_word2[31:16]};
+                3'd5: reply_word = req_word3;
+                3'd6: reply_word = req_src_ip;
+                default: reply_word = 32'h0;
+            endcase
+        end
+    endfunction
+
+    assign o_tx_data = tx_data_reg;
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state <= IDLE;
-            word_cnt <= 0;
-            arp_htype <= 0;
-            arp_ptype <= 0;
-            arp_hlen <= 0;
-            arp_plen <= 0;
-            arp_operation <= 0;
-            arp_src_mac <= 0;
-            arp_src_ip <= 0;
-            arp_dst_ip <= 0;
-            arp_dst_mac <= 0;
+            req_word0 <= 32'd0;
+            req_word1 <= 32'd0;
+            req_word2 <= 32'd0;
+            req_word3 <= 32'd0;
+            req_src_ip <= 32'd0;
+            req_dst_ip <= 32'd0;
+            req_word_cnt <= 3'd0;
+            tx_word_cnt <= 3'd0;
+            tx_data_reg <= 32'd0;
+            tx_valid_reg <= 1'b0;
         end else begin
-            state <= next_state;
-
             case (state)
                 IDLE: begin
-                    word_cnt <= 0;
-                    if (i_arp_valid && i_arp_enable) begin
-                        next_state <= PARSE_HT;
-                    end
-                end
-
-                PARSE_HT: begin
+                    req_word_cnt <= 3'd0;
+                    tx_word_cnt <= 3'd0;
+                    tx_data_reg <= 32'd0;
+                    tx_valid_reg <= 1'b0;
                     if (i_arp_valid && i_arp_ready) begin
-                        word_cnt <= word_cnt + 1'b1;
-                        if (word_cnt == 0) begin
-                            arp_htype <= i_arp_data[31:16];
-                            arp_ptype <= i_arp_data[15:0];
-                        end
-                        if (word_cnt == 1) begin
-                            arp_hlen <= i_arp_data[31:24];
-                            arp_plen <= i_arp_data[23:16];
-                            arp_operation <= i_arp_data[15:0];
-                        end
-                        if (word_cnt == 2) begin
-                            arp_src_mac[47:32] <= i_arp_data[31:16];
-                        end
-                        if (word_cnt == 3) begin
-                            arp_src_mac[31:0] <= i_arp_data[31:0];
-                        end
-                        if (word_cnt == 4) begin
-                            arp_src_ip <= i_arp_data[31:0];
-                        end
-                        if (word_cnt == 5) begin
-                            arp_dst_ip <= i_arp_data[31:0];
-                            next_state <= CHECK_IP;
+                        req_word0 <= i_arp_data;
+                        req_word_cnt <= 3'd1;
+                        state <= CAPTURE_REQ;
+                    end
+                end
+
+                CAPTURE_REQ: begin
+                    if (i_arp_valid && i_arp_ready) begin
+                        case (req_word_cnt)
+                            3'd1: req_word1 <= i_arp_data;
+                            3'd2: req_word2 <= i_arp_data;
+                            3'd3: req_word3 <= i_arp_data;
+                            3'd4: req_src_ip <= i_arp_data;
+                            3'd5: req_dst_ip <= i_arp_data;
+                            default: ;
+                        endcase
+
+                        if (req_word_cnt == 3'd5) begin
+                            req_word_cnt <= 3'd0;
+                            state <= CHECK_REQ;
+                        end else begin
+                            req_word_cnt <= req_word_cnt + 3'd1;
                         end
                     end
                 end
 
-                CHECK_IP: begin
-                    if (is_arp_request && ip_match) begin
-                        next_state <= BUILD_REPLY;
+                CHECK_REQ: begin
+                    tx_word_cnt <= 3'd0;
+                    if (request_matches) begin
+                        tx_data_reg <= reply_word(3'd0);
+                        tx_valid_reg <= 1'b1;
+                        state <= SEND_REPLY;
                     end else begin
-                        next_state <= IDLE;
+                        tx_data_reg <= 32'd0;
+                        tx_valid_reg <= 1'b0;
+                        state <= IDLE;
                     end
-                end
-
-                BUILD_REPLY: begin
-                    next_state <= SEND_REPLY;
                 end
 
                 SEND_REPLY: begin
-                    next_state <= IDLE;
+                    if (tx_valid_reg && o_tx_ready) begin
+                        if (tx_word_cnt == REPLY_LAST_WORD) begin
+                            tx_word_cnt <= 3'd0;
+                            tx_data_reg <= 32'd0;
+                            tx_valid_reg <= 1'b0;
+                            state <= IDLE;
+                        end else begin
+                            tx_word_cnt <= tx_word_cnt + 3'd1;
+                            tx_data_reg <= reply_word(tx_word_cnt + 3'd1);
+                        end
+                    end
                 end
 
-                default: next_state <= IDLE;
+                default: begin
+                    state <= IDLE;
+                    tx_data_reg <= 32'd0;
+                    tx_valid_reg <= 1'b0;
+                end
             endcase
         end
-    end
-
-    // =========================================================
-    // 数据输出多路复用
-    // =========================================================
-    always_comb begin
-        i_arp_ready = (state == PARSE_HT) && i_arp_enable;
-        
-        case (state)
-            IDLE, PARSE_HT, CHECK_IP: begin
-                o_tx_valid = 1'b0;
-                o_tx_data = 32'h0;
-            end
-            BUILD_REPLY: begin
-                o_tx_valid = 1'b1;
-                o_tx_data = 32'h0;
-            end
-            SEND_REPLY: begin
-                if (word_cnt == 0) begin
-                    o_tx_data = {16'h0000, ARP_HTYPE_ETHER};
-                end else if (word_cnt == 1) begin
-                    o_tx_data = {16'h0000, ARP_PTYPE_IPV4};
-                end else if (word_cnt == 2) begin
-                    o_tx_data = {8'h0000, ARP_HLEN_MAC, 8'h0000, ARP_PLEN_IP};
-                end else if (word_cnt == 3) begin
-                    o_tx_data = {16'h0002, i_local_mac[47:32]};
-                end else if (word_cnt == 4) begin
-                    o_tx_data = {i_local_mac[31:0], 16'h0000};
-                end else if (word_cnt == 5) begin
-                    o_tx_data = {16'h0000, i_local_mac[47:32]};
-                end else if (word_cnt == 6) begin
-                    o_tx_data = {i_local_mac[31:0], 16'h0000};
-                end else if (word_cnt == 7) begin
-                    o_tx_data = {arp_src_ip, 16'h0000};
-                end else if (word_cnt == 8) begin
-                    o_tx_data = {arp_src_mac[47:32], 16'h0000};
-                end else if (word_cnt == 9) begin
-                    o_tx_data = {arp_src_mac[31:0], ARP_OP_REPLY};
-                end else begin
-                    o_tx_data = 32'h0;
-                end
-            end
-            default: begin
-                o_tx_valid = 1'b0;
-                o_tx_data = 32'h0;
-            end
-        endcase
     end
 
 endmodule

@@ -1,0 +1,4 @@
+step=02
+scope=fast_path eligible-path fix verified by xsim
+note=bypass path remains stalled by current RTL contract
+source_zip=D:\FPGAhanjia\Hetero_SoC_2026_3\Hetero_SoC_2026\rollback_packages\step01_fastpath_pre_fix_20260317_125204.zip

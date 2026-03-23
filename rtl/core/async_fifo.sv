@@ -57,7 +57,7 @@ module async_fifo #(
 
     // --- 3. 跨时钟域同步 (2-FF Synchronizer) ---
     // 将读指针同步到写时钟域
-    logic [ADDR_WIDTH:0] rptr_gray_s1, rptr_gray_s2;
+    (* ASYNC_REG = "TRUE" *) logic [ADDR_WIDTH:0] rptr_gray_s1, rptr_gray_s2;
     always_ff @(posedge wclk or negedge wrst_n) begin
         if (!wrst_n) {rptr_gray_s2, rptr_gray_s1} <= '0;
         else         {rptr_gray_s2, rptr_gray_s1} <= {rptr_gray_s1, rptr_gray};
@@ -65,7 +65,7 @@ module async_fifo #(
     assign rptr_gray_sync = rptr_gray_s2;
 
     // 将写指针同步到读时钟域
-    logic [ADDR_WIDTH:0] wptr_gray_s1, wptr_gray_s2;
+    (* ASYNC_REG = "TRUE" *) logic [ADDR_WIDTH:0] wptr_gray_s1, wptr_gray_s2;
     always_ff @(posedge rclk or negedge rrst_n) begin
         if (!rrst_n) {wptr_gray_s2, wptr_gray_s1} <= '0;
         else         {wptr_gray_s2, wptr_gray_s1} <= {wptr_gray_s1, wptr_gray};

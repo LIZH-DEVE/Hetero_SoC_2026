@@ -1,0 +1,5 @@
+the_ROM_image:
+{
+  [bootloader] D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/platform/zynq_fsbl/build/fsbl.elf
+  D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/crypto_test_app/build/crypto_test_app.elf
+}

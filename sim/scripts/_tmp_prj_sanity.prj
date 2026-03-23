@@ -1,0 +1,3 @@
+# test
+sv xil_defaultlib "../../rtl/core/fast_path.sv" "../../tb/tb_fast_path_sanity.sv"
+nosort

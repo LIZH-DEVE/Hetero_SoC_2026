@@ -5,7 +5,8 @@
 # 3. Checksum正确
 # 4. 无Malformed Packet
 
-set proj_dir "D:/FPGAhanjia/Hetero_SoC_2026"
+set script_dir [file normalize [file dirname [info script]]]
+set proj_dir [file normalize [file join $script_dir .. ..]]
 cd $proj_dir
 
 puts "=========================================="
@@ -20,7 +21,7 @@ puts "Step 1: Compiling RTL files..."
 puts "----------------------------------------"
 
 # Package files
-xvlog -sv -prj day14_compile.prj -log compile.log
+xvlog -sv -prj [file join $script_dir day14_compile.prj] -log compile.log
 if {$::errorCode != 0} {
     puts "ERROR: Compilation failed!"
     exit 1
@@ -35,8 +36,7 @@ puts "Step 2: Elaborating design..."
 puts "----------------------------------------"
 
 xelab -debug typical -relax -snapshot tb_day14_full_integration_behav \
-      xil_defaultlib.tb_day14_full_integration \
-      xil_defaultlib.glbl -log elaborate.log
+      xil_defaultlib.tb_day14_full_integration -log elaborate.log
 
 if {$::errorCode != 0} {
     puts "ERROR: Elaboration failed!"

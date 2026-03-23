@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="ASCII"?>
+<systemproject:SystemProject xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:sdsproject="http://www.xilinx.com/sdsproject" xmlns:systemproject="http://www.xilinx.com/systemproject" name="ax7020_udp_gateway_app_system" platform="D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/vitis_2023_udp_gateway_ws_2/ax7020_udp_gateway_platform/export/ax7020_udp_gateway_platform/ax7020_udp_gateway_platform.xpfm" platformUID="xilinx:::0.0(custom)" sysConfig="ax7020_udp_gateway_platform" runtime="C/C++">
+  <configuration name="Debug" id="com.xilinx.sdx.system.managedbuilder.debugConfiguration.550869002">
+    <configBuildOptions xsi:type="systemproject:SystemOptions">
+      <applications name="ax7020_udp_gateway_app" domainName="standalone_domain" domainPrettyName="standalone on ps7_cortexa9_0" appBuildConfig="Debug"/>
+      <options xsi:type="sdsproject:Option" gensdcard="true" dmclkid="0"/>
+    </configBuildOptions>
+    <lastBuildOptions xsi:type="systemproject:SystemOptions">
+      <applications name="ax7020_udp_gateway_app" domainName="standalone_domain" domainPrettyName="standalone on ps7_cortexa9_0" appBuildConfig="Debug"/>
+      <options xsi:type="sdsproject:Option" gensdcard="true" dmclkid="0"/>
+    </lastBuildOptions>
+  </configuration>
+  <configuration name="Release" id="com.xilinx.sdx.system.managedbuilder.releaseConfiguration.703218510">
+    <configBuildOptions xsi:type="systemproject:SystemOptions">
+      <applications name="ax7020_udp_gateway_app" domainName="standalone_domain" domainPrettyName="standalone on ps7_cortexa9_0" appBuildConfig="Release"/>
+      <options xsi:type="sdsproject:Option" gensdcard="true" dmclkid="0"/>
+    </configBuildOptions>
+  </configuration>
+</systemproject:SystemProject>

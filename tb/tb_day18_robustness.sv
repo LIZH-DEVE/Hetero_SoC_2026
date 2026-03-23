@@ -1,597 +1,334 @@
 `timescale 1ns / 1ps
 
-/**
- * Day 18: 鲁棒性攻防测试
- * Task 17.1: Attack Vectors
- * Task 17.2: Recovery
- */
-
 module tb_day18_robustness;
 
-    // ========================================================================
-    // Clock and Reset
-    // ========================================================================
+    localparam int AXI_DATA_WIDTH = 32;
+    localparam int PBM_ADDR_WIDTH = 14;
+    localparam int GIANT_PAYLOAD_WORDS = 376; // 1504-byte payload => >1518B Ethernet frame
+
     logic clk;
     logic rst_n;
 
-    initial begin
-        clk = 0;
-        forever #5 clk = ~clk;
-    end
+    logic [AXI_DATA_WIDTH-1:0] rx_tdata;
+    logic                      rx_tvalid;
+    logic                      rx_tlast;
+    logic                      rx_tuser;
+    logic                      rx_tready;
 
-    initial begin
-        rst_n = 0;
-        #200;
-        rst_n = 1;
-    end
+    logic [AXI_DATA_WIDTH-1:0] pbm_wdata;
+    logic                      pbm_wvalid;
+    logic                      pbm_wlast;
+    logic                      pbm_werror;
+    logic                      pbm_wready;
 
-    // ========================================================================
-    // Parameters
-    // ========================================================================
-    localparam AXI_DATA_WIDTH = 32;
-    localparam MIN_ETH_FRAME = 64;
-    localparam MAX_ETH_FRAME = 1518;
-    localparam JUMBO_FRAME = 9000;
+    logic [15:0]               meta_data;
+    logic                      meta_valid;
+    logic                      meta_ready;
 
-    // ========================================================================
-    // RX Parser Interface
-    // ========================================================================
-    logic [AXI_DATA_WIDTH-1:0]  rx_tdata;
-    logic [3:0]                  rx_tkeep;
-    logic                         rx_tlast;
-    logic                         rx_tvalid;
-    logic                         rx_tready;
+    logic [47:0]               rec_src_mac;
+    logic [31:0]               rec_src_ip;
+    logic [15:0]               rec_src_port;
+    logic                      rec_valid;
 
-    // ========================================================================
-    // PBM Interface
-    // ========================================================================
-    logic [AXI_DATA_WIDTH-1:0]  pbm_wdata;
-    logic                        pbm_wvalid;
-    logic                        pbm_wlast;
-    logic                        pbm_werror;
-    logic                        pbm_wready;
+    logic [31:0]               arp_data;
+    logic                      arp_valid;
+    logic                      arp_ready;
 
-    // ========================================================================
-    // Meta Data Interface
-    // ========================================================================
-    logic [15:0]                 meta_data;
-    logic                        meta_valid;
-    logic                        meta_ready;
+    logic [PBM_ADDR_WIDTH:0]   pbm_usage;
+    logic                      pbm_rollback_active;
 
-    // ========================================================================
-    // PBM Status Interface
-    // ========================================================================
-    logic [13:0]                 pbm_usage;
-    logic                        pbm_rollback_active;
+    logic                      clear_monitors_req;
+    logic                      meta_seen;
+    logic                      rec_seen;
+    logic                      rollback_seen;
+    integer                    pbm_write_beats;
+    integer                    test_pass;
+    integer                    test_fail;
+    integer                    runt_cnt;
+    integer                    giant_cnt;
+    integer                    bad_align_cnt;
+    integer                    malformed_cnt;
+    integer                    rollback_cnt;
 
-    // ========================================================================
-    // Statistics
-    // ========================================================================
-    logic [31:0]                 drop_cnt;
-    logic [31:0]                 bad_align_cnt;
-    logic [31:0]                 malformed_cnt;
-    logic [31:0]                 runt_cnt;
-    logic [31:0]                 giant_cnt;
-
-    // ========================================================================
-    // DUT Instantiation
-    // ========================================================================
     rx_parser #(
         .DATA_WIDTH(AXI_DATA_WIDTH)
     ) u_rx_parser (
-        .clk                 (clk),
-        .rst_n               (rst_n),
-
-        // AXI-Stream RX Input
-        .s_axis_tdata        (rx_tdata),
-        .s_axis_tvalid       (rx_tvalid),
-        .s_axis_tlast        (rx_tlast),
-        .s_axis_tuser        (1'b0),  // Error flag from MAC
-        .s_axis_tready       (rx_tready),
-
-        // PBM Write Interface
-        .o_pbm_wdata         (pbm_wdata),
-        .o_pbm_wvalid        (pbm_wvalid),
-        .o_pbm_wlast         (pbm_wlast),
-        .o_pbm_werror        (pbm_werror),
-        .i_pbm_ready         (pbm_wready),
-
-        // Meta Data Interface
-        .o_meta_data         (meta_data),
-        .o_meta_valid        (meta_valid),
-        .i_meta_ready        (meta_ready)
+        .clk            (clk),
+        .rst_n          (rst_n),
+        .s_axis_tdata   (rx_tdata),
+        .s_axis_tvalid  (rx_tvalid),
+        .s_axis_tlast   (rx_tlast),
+        .s_axis_tuser   (rx_tuser),
+        .s_axis_tready  (rx_tready),
+        .o_pbm_wdata    (pbm_wdata),
+        .o_pbm_wvalid   (pbm_wvalid),
+        .o_pbm_wlast    (pbm_wlast),
+        .o_pbm_werror   (pbm_werror),
+        .i_pbm_ready    (pbm_wready),
+        .o_meta_data    (meta_data),
+        .o_meta_valid   (meta_valid),
+        .i_meta_ready   (meta_ready),
+        .o_rec_src_mac  (rec_src_mac),
+        .o_rec_src_ip   (rec_src_ip),
+        .o_rec_src_port (rec_src_port),
+        .o_rec_valid    (rec_valid),
+        .o_arp_data     (arp_data),
+        .o_arp_valid    (arp_valid),
+        .i_arp_ready    (arp_ready)
     );
 
-    // ========================================================================
-    // PBM Controller Instantiation (for rollback verification)
-    // ========================================================================
     pbm_controller #(
-        .PBM_ADDR_WIDTH(14),
+        .PBM_ADDR_WIDTH(PBM_ADDR_WIDTH),
         .DATA_WIDTH(AXI_DATA_WIDTH)
     ) u_pbm (
-        .clk                 (clk),
-        .rst_n               (rst_n),
-
-        // Write Port
-        .i_wr_valid          (pbm_wvalid),
-        .i_wr_data           (pbm_wdata),
-        .i_wr_last           (pbm_wlast),
-        .i_wr_error          (pbm_werror),
-        .o_wr_ready          (pbm_wready),
-
-        // Read Port
-        .i_rd_en             (1'b0),
-        .o_rd_data           (),
-        .o_rd_valid          (),
-        .o_rd_empty          (),
-
-        // Status
-        .o_buffer_usage      (pbm_usage),
-        .o_rollback_active   (pbm_rollback_active)
+        .clk               (clk),
+        .rst_n             (rst_n),
+        .i_wr_valid        (pbm_wvalid),
+        .i_wr_data         (pbm_wdata),
+        .i_wr_last         (pbm_wlast),
+        .i_wr_error        (pbm_werror),
+        .o_wr_ready        (pbm_wready),
+        .i_rd_en           (1'b0),
+        .o_rd_data         (),
+        .o_rd_valid        (),
+        .o_rd_empty        (),
+        .o_buffer_usage    (pbm_usage),
+        .o_rollback_active (pbm_rollback_active)
     );
 
-    // ========================================================================
-    // Test Helper: Send Ethernet Frame
-    // ========================================================================
-    task send_eth_frame;
-        input [47:0] dst_mac;
-        input [47:0] src_mac;
-        input [15:0] eth_type;
-        input [15:0] ip_total_len;
-        input [15:0] udp_len;
-        input [7:0]  ip_ihl;
-        input [15:0] payload_len;
-        input [31:0] payload_pattern;
-        begin
-            $display("[%0t] Sending Ethernet frame", $time);
-            $display("  Dst MAC: %h", dst_mac);
-            $display("  Src MAC: %h", src_mac);
-            $display("  Eth Type: 0x%h", eth_type);
-            $display("  IP Total Len: %d", ip_total_len);
-            $display("  UDP Len: %d", udp_len);
-            $display("  Payload Len: %d", payload_len);
+    initial begin
+        clk = 1'b0;
+        forever #5 clk = ~clk;
+    end
 
-            // Ethernet Header
-            send_word({dst_mac[47:16]});
-            send_word({dst_mac[15:0], src_mac[47:32]});
-            send_word({src_mac[31:0], eth_type});
-
-            // IP Header
-            send_word({16'h4500 | {ip_ihl, 12'h0}, ip_total_len});
-            send_word(16'h1234);
-            send_word(16'h4000);
-            send_word(16'h4011);  // TTL=64, Protocol=17(UDP)
-            send_word(32'h00000000);  // Checksum, SrcIP
-            send_word(32'hC0A8010A);  // DstIP (192.168.1.10)
-
-            // UDP Header
-            send_word({16'h1234, 16'h5678});  // SrcPort, DstPort
-            send_word(udp_len);
-
-            // Payload
-            for (int i = 0; i < payload_len; i += 4) begin
-                send_word(payload_pattern ^ i);
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            meta_seen <= 1'b0;
+            rec_seen <= 1'b0;
+            rollback_seen <= 1'b0;
+            pbm_write_beats <= 0;
+        end else if (clear_monitors_req) begin
+            meta_seen <= 1'b0;
+            rec_seen <= 1'b0;
+            rollback_seen <= 1'b0;
+            pbm_write_beats <= 0;
+        end else begin
+            if (meta_valid) begin
+                meta_seen <= 1'b1;
             end
+            if (rec_valid) begin
+                rec_seen <= 1'b1;
+            end
+            if (pbm_rollback_active) begin
+                rollback_seen <= 1'b1;
+            end
+            if (pbm_wvalid && pbm_wready) begin
+                pbm_write_beats <= pbm_write_beats + 1;
+            end
+        end
+    end
 
-            $display("[%0t] Frame sent", $time);
+    task automatic clear_drive;
+        begin
+            rx_tdata <= '0;
+            rx_tvalid <= 1'b0;
+            rx_tlast <= 1'b0;
+            rx_tuser <= 1'b0;
         end
     endtask
 
-    // ========================================================================
-    // Test Helper: Send Word
-    // ========================================================================
-    task send_word;
-        input [31:0] word;
+    task automatic clear_monitors_and_wait;
         begin
+            clear_monitors_req <= 1'b1;
             @(posedge clk);
-            rx_tdata = word;
-            rx_tvalid = 1'b1;
-            rx_tlast = 1'b0;
+            clear_monitors_req <= 1'b0;
             @(posedge clk);
-            while (!rx_tready) @(posedge clk);
-            @(posedge clk);
-            rx_tvalid = 1'b0;
         end
     endtask
 
-    // ========================================================================
-    // Test Helper: Send Last Word
-    // ========================================================================
-    task send_last_word;
-        input [31:0] word;
+    task automatic pulse_reset;
         begin
-            @(posedge clk);
-            rx_tdata = word;
-            rx_tvalid = 1'b1;
-            rx_tlast = 1'b1;
-            @(posedge clk);
-            while (!rx_tready) @(posedge clk);
-            @(posedge clk);
-            rx_tvalid = 1'b0;
-            rx_tlast = 1'b0;
+            rst_n <= 1'b0;
+            clear_monitors_req <= 1'b1;
+            clear_drive();
+            repeat (4) @(posedge clk);
+            rst_n <= 1'b1;
+            clear_monitors_req <= 1'b0;
+            repeat (4) @(posedge clk);
         end
     endtask
 
-    // ========================================================================
-    // Test Helper: Send Payload with Last
-    // ========================================================================
-    task send_payload;
-        input [15:0] len;
-        input [31:0] pattern;
+    task automatic wait_pipeline_idle;
+        integer idle_cycles;
         begin
-            for (int i = 0; i < len; i += 4) begin
-                if (i + 4 >= len) begin
-                    send_last_word(pattern ^ i);
+            idle_cycles = 0;
+            while (idle_cycles < 12) begin
+                @(posedge clk);
+                if (!rx_tvalid && !pbm_wvalid && !meta_valid && !rec_valid && !pbm_rollback_active) begin
+                    idle_cycles = idle_cycles + 1;
                 end else begin
-                    send_word(pattern ^ i);
+                    idle_cycles = 0;
                 end
             end
         end
     endtask
 
-    // ========================================================================
-    // Test Helper: Send Runt Frame
-    // ========================================================================
-    task send_runt_frame;
+    task automatic drive_word(
+        input [31:0] word,
+        input        is_last,
+        input        is_error
+    );
         begin
-            $display("[%0t] ========== Sending Runt Frame (< 64 bytes) ==========", $time);
-
-            // Minimal Ethernet frame (20 bytes IP header + 8 bytes UDP + tiny payload = < 64)
-            send_eth_frame(
-                48'hFFFFFFFFFFFF,  // Broadcast
-                48'h000A35000102,  // Our MAC
-                16'h0800,         // IPv4
-                16'd28,           // IP Total Len (20 header + 8 UDP)
-                16'd8,            // UDP Len (header only)
-                8'd5,             // IHL = 5 (20 bytes)
-                16'd0,            // No payload
-                32'hDEADBEEF
-            );
+            @(negedge clk);
+            rx_tdata <= word;
+            rx_tvalid <= 1'b1;
+            rx_tlast <= is_last;
+            rx_tuser <= is_error;
+            @(posedge clk);
+            while (!rx_tready) @(posedge clk);
+            @(negedge clk);
+            clear_drive();
         end
     endtask
 
-    // ========================================================================
-    // Test Helper: Send Giant Frame
-    // ========================================================================
-    task send_giant_frame;
+    task automatic send_ipv4_udp_frame(
+        input [15:0] ip_total_len,
+        input [15:0] udp_len,
+        input integer payload_words,
+        input [31:0] payload_base,
+        input bit error_on_last
+    );
+        integer i;
+        bit final_is_header;
         begin
-            $display("[%0t] ========== Sending Giant Frame (> 1518 bytes) ==========", $time);
+            final_is_header = (payload_words == 0);
 
-            send_eth_frame(
-                48'hFFFFFFFFFFFF,
-                48'h000A35000102,
-                16'h0800,
-                16'd9000,          // IP Total Len (9KB)
-                16'd8972,          // UDP Len
-                8'd5,               // IHL = 5
-                16'd8964,           // Payload Len (8964 bytes)
-                32'hCAFEBABE
-            );
-        end
-    endtask
+            drive_word(32'hFFFF_FFFF, 1'b0, 1'b0); // dst mac [47:16]
+            drive_word(32'hFFFF_000A, 1'b0, 1'b0); // dst[15:0], src[47:32]
+            drive_word(32'h3500_0102, 1'b0, 1'b0); // src[31:0]
+            drive_word(32'h0800_0000, 1'b0, 1'b0); // eth_type in [31:16]
 
-    // ========================================================================
-    // Test Helper: Send Bad Align Frame
-    // ========================================================================
-    task send_bad_align_frame;
-        begin
-            $display("[%0t] ========== Sending Bad Alignment Frame ==========", $time);
+            drive_word({ip_total_len, 12'h000, 4'd5}, 1'b0, 1'b0);
+            drive_word(32'h0000_1234, 1'b0, 1'b0);
+            drive_word(32'h0000_4011, 1'b0, 1'b0);
+            drive_word(32'h0000_C0A8, 1'b0, 1'b0); // src ip [31:16] in low half
+            drive_word(32'h010A_0000, 1'b0, 1'b0); // src ip [15:0] in high half
+            drive_word(32'h5678_1234, 1'b0, 1'b0); // src port in low half
+            drive_word({16'h0000, udp_len}, final_is_header, final_is_header && error_on_last);
 
-            send_eth_frame(
-                48'hFFFFFFFFFFFF,
-                48'h000A35000102,
-                16'h0800,
-                16'd40,            // IP Total Len
-                16'd20,            // UDP Len (8 header + 12 payload, not 16-byte aligned)
-                8'd5,              // IHL = 5
-                16'd12,            // Payload Len (not 16-byte aligned)
-                32'hAABBCCDD
-            );
-        end
-    endtask
-
-    // ========================================================================
-    // Test Helper: Send Malformed Frame
-    // ========================================================================
-    task send_malformed_frame;
-        begin
-            $display("[%0t] ========== Sending Malformed Frame ==========", $time);
-
-            // UDP Len > IP Total Len - IP Header
-            send_eth_frame(
-                48'hFFFFFFFFFFFF,
-                48'h000A35000102,
-                16'h0800,
-                16'd40,            // IP Total Len
-                16'd40,            // UDP Len (40 > 40-20=20, malformed!)
-                8'd5,              // IHL = 5
-                16'd32,            // Payload Len
-                32'h11223344
-            );
-        end
-    endtask
-
-    // ========================================================================
-    // Test Helper: Send Normal Frame
-    // ========================================================================
-    task send_normal_frame;
-        input [15:0] payload_len;
-        begin
-            $display("[%0t] ========== Sending Normal Frame ==========", $time);
-
-            send_eth_frame(
-                48'hFFFFFFFFFFFF,
-                48'h000A35000102,
-                16'h0800,
-                16'd28 + payload_len,  // IP Total Len
-                16'd8 + payload_len,   // UDP Len
-                8'd5,                  // IHL = 5
-                payload_len,
-                32'h12345678
-            );
-        end
-    endtask
-
-    // ========================================================================
-    // Recovery Verification
-    // ========================================================================
-    logic [31:0] pbm_usage_before;
-    logic        rollback_detected;
-
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            pbm_usage_before <= 0;
-            rollback_detected <= 0;
-        end else begin
-            // Check if rollback occurred
-            if (pbm_rollback_active) begin
-                rollback_detected <= 1'b1;
-                $display("[%0t] ROLLBACK DETECTED! PBM Usage: %d -> %d",
-                         $time, pbm_usage_before, pbm_usage);
-            end
-
-            // Capture PBM usage before potential rollback
-            if (pbm_wvalid && pbm_wready && !pbm_wlast) begin
-                pbm_usage_before <= pbm_usage;
+            for (i = 0; i < payload_words; i = i + 1) begin
+                drive_word(payload_base ^ i, (i == payload_words - 1), (i == payload_words - 1) && error_on_last);
             end
         end
-    end
+    endtask
 
-    // ========================================================================
-    // Main Test Sequence
-    // ========================================================================
-    int test_pass;
-    int test_fail;
+    task automatic record_result(
+        input bit condition,
+        input string pass_msg,
+        input string fail_msg
+    );
+        begin
+            if (condition) begin
+                $display("[PASS] %s", pass_msg);
+                test_pass = test_pass + 1;
+            end else begin
+                $display("[FAIL] %s", fail_msg);
+                test_fail = test_fail + 1;
+            end
+        end
+    endtask
 
     initial begin
         test_pass = 0;
         test_fail = 0;
-        pbm_usage_before = 0;
-        rollback_detected = 0;
-
-        rx_tvalid = 1'b0;
-        rx_tdata = 32'h0;
-        rx_tlast = 1'b0;
+        runt_cnt = 0;
+        giant_cnt = 0;
+        bad_align_cnt = 0;
+        malformed_cnt = 0;
+        rollback_cnt = 0;
+        clear_monitors_req = 1'b0;
         meta_ready = 1'b1;
-
-        wait(rst_n);
-        #1000;
+        arp_ready = 1'b1;
+        clear_drive();
 
         $display("========================================");
-        $display("Day 18: 鲁棒性攻防测试");
-        $display("Task 17.1: Attack Vectors");
-        $display("Task 17.2: Recovery");
+        $display("Day 18: Robustness Verification");
         $display("========================================");
-        $display();
 
-        // ====================================================================
-        // Test 1: Runt Frame (< 64 bytes)
-        // ====================================================================
-        $display("========================================");
-        $display("Test 1: Runt Frame Attack");
-        $display("Expected: Drop due to minimal frame size");
-        $display("========================================");
-        $display();
+        // Test 1: runt frame requirement
+        pulse_reset();
+        send_ipv4_udp_frame(16'd44, 16'd24, 4, 32'h1111_0000, 1'b0); // 58B Ethernet frame
+        wait_pipeline_idle();
+        record_result(!meta_seen && pbm_write_beats == 0,
+                      "Runt frame dropped",
+                      $sformatf("Runt frame accepted under current RTL: meta_seen=%0d pbm_write_beats=%0d",
+                                meta_seen, pbm_write_beats));
+        if (!meta_seen && pbm_write_beats == 0) runt_cnt = runt_cnt + 1;
 
-        pbm_usage_before = 0;
-        rollback_detected = 0;
-        send_runt_frame();
+        // Test 2: giant frame requirement
+        pulse_reset();
+        send_ipv4_udp_frame(16'd1532, 16'd1512, GIANT_PAYLOAD_WORDS, 32'h2222_0000, 1'b0);
+        wait_pipeline_idle();
+        record_result(!meta_seen && pbm_write_beats == 0,
+                      "Giant frame dropped",
+                      $sformatf("Giant frame accepted under current RTL: meta_seen=%0d pbm_write_beats=%0d",
+                                meta_seen, pbm_write_beats));
+        if (!meta_seen && pbm_write_beats == 0) giant_cnt = giant_cnt + 1;
 
-        #1000;
+        // Test 3: bad alignment
+        pulse_reset();
+        send_ipv4_udp_frame(16'd40, 16'd20, 3, 32'h3333_0000, 1'b0);
+        wait_pipeline_idle();
+        record_result(!meta_seen && pbm_write_beats == 0,
+                      "Bad alignment frame dropped",
+                      $sformatf("Bad alignment frame was not dropped: meta_seen=%0d pbm_write_beats=%0d",
+                                meta_seen, pbm_write_beats));
+        if (!meta_seen && pbm_write_beats == 0) bad_align_cnt = bad_align_cnt + 1;
 
-        if (!meta_valid) begin
-            $display("✅ Test 1 PASS: Runt frame dropped");
-            runt_cnt = runt_cnt + 1;
-            test_pass++;
-        end else begin
-            $display("❌ Test 1 FAIL: Runt frame not dropped");
-            test_fail++;
-        end
-        $display();
+        // Test 4: malformed header
+        pulse_reset();
+        send_ipv4_udp_frame(16'd40, 16'd40, 8, 32'h4444_0000, 1'b0);
+        wait_pipeline_idle();
+        record_result(!meta_seen && pbm_write_beats == 0,
+                      "Malformed frame dropped",
+                      $sformatf("Malformed frame was not dropped: meta_seen=%0d pbm_write_beats=%0d",
+                                meta_seen, pbm_write_beats));
+        if (!meta_seen && pbm_write_beats == 0) malformed_cnt = malformed_cnt + 1;
 
-        // ====================================================================
-        // Test 2: Giant Frame (> 1518 bytes)
-        // ====================================================================
-        $display("========================================");
-        $display("Test 2: Giant Frame Attack");
-        $display("Expected: Drop due to oversized frame");
-        $display("========================================");
-        $display();
+        // Test 5: normal aligned packet
+        pulse_reset();
+        send_ipv4_udp_frame(16'd60, 16'd40, 8, 32'h5555_0000, 1'b0);
+        wait_pipeline_idle();
+        record_result(meta_seen && rec_seen && pbm_write_beats == 8 && !rollback_seen && meta_data == 16'd32,
+                      "Normal aligned packet accepted without rollback",
+                      $sformatf("Normal packet handling mismatch: meta_seen=%0d rec_seen=%0d pbm_write_beats=%0d rollback_seen=%0d meta_data=%0d",
+                                meta_seen, rec_seen, pbm_write_beats, rollback_seen, meta_data));
 
-        pbm_usage_before = 0;
-        rollback_detected = 0;
-        send_giant_frame();
+        // Test 6: rollback on MAC error during final payload beat
+        pulse_reset();
+        send_ipv4_udp_frame(16'd60, 16'd40, 8, 32'h6666_0000, 1'b1);
+        wait_pipeline_idle();
+        record_result(rollback_seen && !meta_seen && pbm_usage == 0,
+                      "PBM rollback triggered on write error",
+                      $sformatf("Rollback path mismatch: rollback_seen=%0d meta_seen=%0d pbm_usage=%0d pbm_write_beats=%0d",
+                                rollback_seen, meta_seen, pbm_usage, pbm_write_beats));
+        if (rollback_seen && !meta_seen && pbm_usage == 0) rollback_cnt = rollback_cnt + 1;
 
-        #1000;
-
-        if (!meta_valid) begin
-            $display("✅ Test 2 PASS: Giant frame dropped");
-            giant_cnt = giant_cnt + 1;
-            test_pass++;
-        end else begin
-            $display("❌ Test 2 FAIL: Giant frame not dropped");
-            test_fail++;
-        end
-        $display();
-
-        // ====================================================================
-        // Test 3: Bad Alignment Frame
-        // ====================================================================
-        $display("========================================");
-        $display("Test 3: Bad Alignment Attack");
-        $display("Expected: Drop due to payload not 16-byte aligned");
-        $display("========================================");
-        $display();
-
-        pbm_usage_before = 0;
-        rollback_detected = 0;
-        send_bad_align_frame();
-
-        #1000;
-
-        if (!meta_valid) begin
-            $display("✅ Test 3 PASS: Bad alignment frame dropped");
-            bad_align_cnt = bad_align_cnt + 1;
-            test_pass++;
-        end else begin
-            $display("❌ Test 3 FAIL: Bad alignment frame not dropped");
-            test_fail++;
-        end
-        $display();
-
-        // ====================================================================
-        // Test 4: Malformed Frame (UDP Len > IP Total Len - IP Header)
-        // ====================================================================
-        $display("========================================");
-        $display("Test 4: Malformed Frame Attack");
-        $display("Expected: Drop due to UDP length inconsistency");
-        $display("========================================");
-        $display();
-
-        pbm_usage_before = 0;
-        rollback_detected = 0;
-        send_malformed_frame();
-
-        #1000;
-
-        if (!meta_valid) begin
-            $display("✅ Test 4 PASS: Malformed frame dropped");
-            malformed_cnt = malformed_cnt + 1;
-            test_pass++;
-        end else begin
-            $display("❌ Test 4 FAIL: Malformed frame not dropped");
-            test_fail++;
-        end
-        $display();
-
-        // ====================================================================
-        // Test 5: Normal Frame (32 bytes payload, 16-byte aligned)
-        // ====================================================================
-        $display("========================================");
-        $display("Test 5: Normal Frame (Recovery Test)");
-        $display("Expected: Accept and verify no rollback");
-        $display("========================================");
-        $display();
-
-        pbm_usage_before = 0;
-        rollback_detected = 0;
-        send_normal_frame(16'd32);
-
-        #1000;
-
-        if (meta_valid && !rollback_detected) begin
-            $display("✅ Test 5 PASS: Normal frame accepted, no rollback");
-            $display("  Payload Length: %d", meta_data);
-            $display("  PBM Usage: %d", pbm_usage);
-            test_pass++;
-        end else begin
-            $display("❌ Test 5 FAIL: Normal frame not processed correctly");
-            $display("  Meta Valid: %d", meta_valid);
-            $display("  Rollback Detected: %d", rollback_detected);
-            test_fail++;
-        end
-        $display();
-
-        // ====================================================================
-        // Test 6: Recovery Test - Drop after partial write
-        // ====================================================================
-        $display("========================================");
-        $display("Test 6: Recovery Test - Bad alignment during transfer");
-        $display("Expected: Rollback triggered, PBM resources freed");
-        $display("========================================");
-        $display();
-
-        pbm_usage_before = 0;
-        rollback_detected = 0;
-
-        // Start sending frame, then send bad aligned frame
-        $display("[%0t] Starting recovery test...", $time);
-
-        #1000;
-        send_bad_align_frame();
-
-        #1000;
-
-        if (rollback_detected) begin
-            $display("✅ Test 6 PASS: Rollback detected and triggered");
-            $display("  PBM Usage Before: %d", pbm_usage_before);
-            $display("  PBM Usage After: %d (should be <= before)", pbm_usage);
-            test_pass++;
-        end else begin
-            $display("❌ Test 6 FAIL: Rollback not detected");
-            test_fail++;
-        end
-        $display();
-
-        // ====================================================================
-        // Test Summary
-        // ====================================================================
         $display("========================================");
         $display("Day 18 Test Summary");
         $display("========================================");
-        $display("Total Tests: %d", test_pass + test_fail);
-        $display("Passed:      %d", test_pass);
-        $display("Failed:      %d", test_fail);
-        $display();
-        $display("Attack Statistics:");
-        $display("  Runt Frames:    %d", runt_cnt);
-        $display("  Giant Frames:   %d", giant_cnt);
-        $display("  Bad Align:      %d", bad_align_cnt);
-        $display("  Malformed:     %d", malformed_cnt);
-        $display();
-
-        if (test_fail == 0) begin
-            $display("✅ All tests passed!");
-            $display();
-            $display("Task 17.1: Attack Vectors - ✅ PASS");
-            $display("  - Runt Frame detection: OK");
-            $display("  - Giant Frame detection: OK");
-            $display("  - Bad Alignment detection: OK");
-            $display("  - Malformed Frame detection: OK");
-            $display();
-            $display("Task 17.2: Recovery - ✅ PASS");
-            $display("  - DROP_CNT verification: OK");
-            $display("  - PBM resource rollback: OK");
-        end else begin
-            $display("❌ Some tests failed!");
-        end
-
-        $display("========================================");
-        $display("PBM Status:");
-        $display("  Current Usage: %d", pbm_usage);
-        $display("  Rollback Active: %d", pbm_rollback_active);
+        $display("Total Tests: %0d", test_pass + test_fail);
+        $display("Passed:      %0d", test_pass);
+        $display("Failed:      %0d", test_fail);
+        $display("Runt Drops:  %0d", runt_cnt);
+        $display("Giant Drops: %0d", giant_cnt);
+        $display("Bad Align:   %0d", bad_align_cnt);
+        $display("Malformed:   %0d", malformed_cnt);
+        $display("Rollback:    %0d", rollback_cnt);
         $display("========================================");
 
-        #1000;
+        #100;
         $finish;
-    end
-
-    // ========================================================================
-    // Waveform Dump
-    // ========================================================================
-    initial begin
-        $dumpfile("tb_day18_robustness.vcd");
-        $dumpvars(0, tb_day18_robustness);
     end
 
 endmodule

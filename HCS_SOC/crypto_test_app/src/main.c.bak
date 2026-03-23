@@ -1,0 +1,344 @@
+#include "xil_printf.h"
+#include "xil_cache.h"
+#include "sleep.h"
+#include "xil_io.h"
+
+#define UART1_BASEADDR 0xE0001000
+#define UART_FIFO_OFFSET 0x30
+#define UART_SR_OFFSET 0x2C
+#define UART_SR_TXFULL 0x00000010
+
+#define CRYPTO_BASE_ADDR 0x43C00000
+#define REG_CTRL   0x00
+#define REG_STATUS 0x08
+#define REG_DATA_IN  0x04
+#define REG_DATA_OUT 0x0C
+#define REG_KEY_0  0x10
+#define REG_STALL_CNT 0x30
+
+#define ALGO_AES 0
+#define MODE_ENCRYPT 1
+#define MODE_DECRYPT 0
+#define STATUS_READY 0x00000001
+
+#define HW_WRITE(offset, data) Xil_Out32(CRYPTO_BASE_ADDR + (offset), (data))
+#define HW_READ(offset)        Xil_In32(CRYPTO_BASE_ADDR + (offset))
+
+// 极简裸机 UART 驱动 (直写寄存器，不依赖 BSP)
+void uart_putchar(char c) {
+    while (Xil_In32(UART1_BASEADDR + UART_SR_OFFSET) & UART_SR_TXFULL);
+    Xil_Out32(UART1_BASEADDR + UART_FIFO_OFFSET, c);
+}
+
+void uart_puts(const char *str) {
+    while (*str) {
+        if (*str == '\n') uart_putchar('\r');
+        uart_putchar(*str++);
+    }
+}
+
+void uart_puthex8(uint8_t val) {
+    const char hex_chars[] = "0123456789ABCDEF";
+    uart_putchar(hex_chars[(val >> 4) & 0x0F]);
+    uart_putchar(hex_chars[val & 0x0F]);
+}
+
+void uart_puthex32(uint32_t val) {
+    uart_puthex8((val >> 24) & 0xFF);
+    uart_puthex8((val >> 16) & 0xFF);
+    uart_puthex8((val >> 8) & 0xFF);
+    uart_puthex8(val & 0xFF);
+}
+
+void print_hex_block_uart(const char* label, const uint8_t* data, int len) {
+    uart_puts(label);
+    uart_puts(": \n    ");
+    for (int i = 0; i < len; i++) {
+        uart_puthex8(data[i]);
+        uart_putchar(' ');
+        if ((i + 1) % 16 == 0 && i != len - 1) {
+            uart_puts("\n    ");
+        }
+    }
+    uart_puts("\n");
+}
+
+void load_key_128(const uint8_t* key) {
+    // 写入 4 个 Word 作为 128-bit 密钥 (由于 AXI RTL 端 slv_reg7为高位, slv_reg4为低位)
+    // 必须倒序存放，使得 key[0:3] 存在最高位 REG_KEY_3 中
+    for (int i = 0; i < 4; i++) {
+        uint32_t kv = (key[i*4] << 24) | (key[i*4+1] << 16) | (key[i*4+2] << 8) | key[i*4+3];
+        HW_WRITE(REG_KEY_0 + (3 - i)*4, kv);
+    }
+}
+
+#define STATUS_SYS_READY 0x00000001
+#define STATUS_TX_EMPTY  0x00000002
+
+// 将处理逻辑拆分为“推送”和“提取”，以便模拟突发流量
+int push_block(const uint8_t* in_block, uint8_t algo, uint8_t mode) {
+    uint32_t status;
+    int timeout;
+
+    // 配置算法与模式 (bit 0: algo, bit 1: mode)
+    uint32_t config = (algo & 0x01) | ((mode & 0x01) << 1);
+    uart_puts("[DEBUG] Writing REG_CTRL...\n");
+    HW_WRITE(REG_CTRL, config);
+    uart_puts("[DEBUG] REG_CTRL done.\n");
+
+    // 1. 检查 sys_ready (bit 0) 确保引擎空闲可接客
+    timeout = 100000;
+    while (((status = HW_READ(REG_STATUS)) & STATUS_SYS_READY) == 0) {
+        timeout--;
+        if (timeout <= 0) {
+            uart_puts("[ERR] Engine is BUSY (sys_ready=0)! Cannot push new block.\n");
+            return -1;
+        }
+    }
+
+    // 推入 4 个 Word 的 Plaintext
+    uart_puts("[DEBUG] Pushing Data...");
+    for (int i = 0; i < 4; i++) {
+        uint32_t din = (in_block[i*4] << 24) | (in_block[i*4+1] << 16) | (in_block[i*4+2] << 8) | in_block[i*4+3];
+        HW_WRITE(REG_DATA_IN, din);
+        uart_puts(">");
+    }
+    uart_puts(" done.\n");
+    return 0;
+}
+
+// 纯暴力推送函数：绕过所有软件轮询，直接冲击 AXI 总线，用于测试 WREADY 硬件背压
+void push_block_raw(const uint8_t* in_block) {
+    for (int i = 0; i < 4; i++) {
+        uint32_t din = (in_block[i*4] << 24) | (in_block[i*4+1] << 16) | (in_block[i*4+2] << 8) | in_block[i*4+3];
+        HW_WRITE(REG_DATA_IN, din);
+    }
+}
+
+int pull_block(uint8_t* out_block) {
+    int timeout;
+
+    // 3. 检查 sys_ready (bit 0) 等待硬件加密处理完成
+    uart_puts("[DEBUG] Waiting for SYS_READY...");
+    timeout = 100000;
+    while ((HW_READ(REG_STATUS) & STATUS_SYS_READY) == 0) {
+        timeout--;
+        if (timeout <= 0) {
+            uart_puts("[ERR] Encryption Timeout!\n");
+            return -1;
+        }
+    }
+    uart_puts(" Ready.\n");
+
+    // 4. 拔出 4 个 Word 的结果
+    uart_puts("[DEBUG] Pulling Data...");
+    for (int i = 0; i < 4; i++) {
+        timeout = 10000;
+        while (HW_READ(REG_STATUS) & STATUS_TX_EMPTY) {
+            timeout--;
+            if (timeout <= 0) {
+                uart_puts("[ERR] TX FIFO starved! Expected data but timed out.\n");
+                return -1;
+            }
+        }
+        
+        uint32_t dout = HW_READ(REG_DATA_OUT);
+        out_block[i*4]   = (dout >> 24) & 0xFF;
+        out_block[i*4+1] = (dout >> 16) & 0xFF;
+        out_block[i*4+2] = (dout >> 8)  & 0xFF;
+        out_block[i*4+3] = dout & 0xFF;
+        uart_puts("<");
+    }
+    uart_puts(" done.\n");
+    return 0;
+}
+
+int process_block(const uint8_t* in_block, uint8_t* out_block, uint8_t algo, uint8_t mode) {
+    if (push_block(in_block, algo, mode) < 0) return -1;
+    return pull_block(out_block);
+}
+
+// SM4 标准测试向量 (GB/T 32907-2016)
+const uint8_t sm4_key[16] = {0x01,0x23,0x45,0x67,0x89,0xab,0xcd,0xef,0xfe,0xdc,0xba,0x98,0x76,0x54,0x32,0x10};
+const uint8_t sm4_pt[16]  = {0x01,0x23,0x45,0x67,0x89,0xab,0xcd,0xef,0xfe,0xdc,0xba,0x98,0x76,0x54,0x32,0x10};
+const uint8_t sm4_ct[16]  = {0x68,0x1e,0xdf,0x34,0xd2,0x06,0x96,0x5e,0x86,0xb3,0xe9,0x4f,0x53,0x6e,0x42,0x46};
+
+int compare_blocks(const uint8_t* a, const uint8_t* b, int len) {
+    for (int i = 0; i < len; i++) {
+        if (a[i] != b[i]) return 0;
+    }
+    return 1;
+}
+
+void test_aes_encrypt() {
+    uint8_t output[16];
+    const uint8_t aes_key[16] = {0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6, 0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c};
+    const uint8_t aes_pt[16] = {0x32, 0x43, 0xf6, 0xa8, 0x88, 0x5a, 0x30, 0x8d, 0x31, 0x31, 0x98, 0xa2, 0xe0, 0x37, 0x07, 0x34};
+    const uint8_t aes_expected_ct[16] = {0x39, 0x25, 0x84, 0x1d, 0x02, 0xdc, 0x09, 0xfb, 0xdc, 0x11, 0x85, 0x97, 0x19, 0x6a, 0x0b, 0x32};
+
+    uart_puts("\n--- [TEST] AES-128 Encryption ---\n");
+    load_key_128(aes_key);
+    process_block(aes_pt, output, ALGO_AES, MODE_ENCRYPT);
+    print_hex_block_uart("[OUT] Ciphertext", output, 16);
+    if (compare_blocks(output, aes_expected_ct, 16)) {
+        uart_puts("[PASS] AES Encryption Correct!\n");
+    } else {
+        uart_puts("[FAIL] AES Encryption Mismatch!\n");
+    }
+}
+
+void test_aes_decrypt() {
+    uint8_t output[16];
+    const uint8_t aes_key[16] = {0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6, 0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c};
+    const uint8_t aes_ct[16] = {0x39, 0x25, 0x84, 0x1d, 0x02, 0xdc, 0x09, 0xfb, 0xdc, 0x11, 0x85, 0x97, 0x19, 0x6a, 0x0b, 0x32};
+    const uint8_t aes_expected_pt[16] = {0x32, 0x43, 0xf6, 0xa8, 0x88, 0x5a, 0x30, 0x8d, 0x31, 0x31, 0x98, 0xa2, 0xe0, 0x37, 0x07, 0x34};
+
+    uart_puts("\n--- [TEST] AES-128 Decryption ---\n");
+    load_key_128(aes_key);
+    process_block(aes_ct, output, ALGO_AES, MODE_DECRYPT);
+    print_hex_block_uart("[OUT] Plaintext", output, 16);
+    if (compare_blocks(output, aes_expected_pt, 16)) {
+        uart_puts("[PASS] AES Decryption Correct!\n");
+    } else {
+        uart_puts("[FAIL] AES Decryption Mismatch!\n");
+    }
+}
+
+void test_sm4_all() {
+    uint8_t output[16];
+    uart_puts("\n--- [TEST] SM4-128 Encryption ---\n");
+    load_key_128(sm4_key);
+    process_block(sm4_pt, output, 1, MODE_ENCRYPT); // ALGO=1 is SM4
+    print_hex_block_uart("[OUT] SM4 Cipher", output, 16);
+    if (compare_blocks(output, sm4_ct, 16)) {
+        uart_puts("[PASS] SM4 Encryption Correct!\n");
+    } else {
+        uart_puts("[FAIL] SM4 Encryption Mismatch!\n");
+    }
+
+    uart_puts("\n--- [TEST] SM4-128 Decryption ---\n");
+    process_block(sm4_ct, output, 1, MODE_DECRYPT);
+    print_hex_block_uart("[OUT] SM4 Plain", output, 16);
+    if (compare_blocks(output, sm4_pt, 16)) {
+        uart_puts("[PASS] SM4 Decryption Correct!\n");
+    } else {
+        uart_puts("[FAIL] SM4 Decryption Mismatch!\n");
+    }
+}
+
+void test_security_robustness() {
+    uart_puts("\n--- [SECURITY] Hardware WREADY Back-pressure Test (20 Blocks) ---\n");
+    uart_puts("[SYS] Pushing 20 blocks FAST (skipping SYS_READY polling) to force AXI back-pressure...\n");
+    
+    uint8_t dummy_in[16] = {0};
+    uint8_t dummy_out[16];
+
+    // 配置为 AES 加密模式
+    HW_WRITE(REG_CTRL, (ALGO_AES & 0x01) | (MODE_ENCRYPT << 1));
+    const uint8_t test_key[16] = {0x2B, 0x7E, 0x15, 0x16, 0x28, 0xAE, 0xD2, 0xA6, 0xAB, 0xF7, 0x15, 0x88, 0x09, 0xCF, 0x4F, 0x3C};
+    load_key_128(test_key);
+
+    uint32_t stall_start = HW_READ(REG_STALL_CNT);
+    for (int i = 0; i < 20; i++) {
+        dummy_in[0] = i; 
+        push_block_raw(dummy_in); // 关键：不再等待 SYS_READY，直接写入
+        if (i % 5 == 0) uart_puts(">");
+    }
+    uint32_t stall_end = HW_READ(REG_STALL_CNT);
+    
+    uart_puts("\n[SYS] Burst Write Finish.\n");
+    uart_puts("[SYS] Hardware Stall Cycles detected on AXI: "); 
+    uart_puthex32(stall_end - stall_start); 
+    uart_puts(" cycles.\n");
+    
+    uint32_t status = HW_READ(REG_STATUS);
+    uart_puts("[SYS] STATUS at full load: 0x"); uart_puthex32(status); uart_puts("\n");
+
+    uart_puts("[SYS] Draining results to verify data integrity...\n");
+    int fail_count = 0;
+    for (int i = 0; i < 20; i++) {
+        if (pull_block(dummy_out) != 0) {
+            fail_count++;
+        }
+        if (i % 5 == 0) uart_puts("<");
+    }
+    
+    if (fail_count == 0) {
+        uart_puts("\n[PASS] Hardware WREADY Back-pressure verified! No data lost under burst load.\n");
+    } else {
+        uart_puts("\n[FAIL] Back-pressure leaked! Some blocks missed.\n");
+    }
+
+    uart_puts("\n--- [SECURITY] Exception Test: Short Packet (1 Word) ---\n");
+    uart_puts("[SYS] Sending only 4 bytes (1 word) to 128-bit engine...\n");
+    HW_WRITE(REG_DATA_IN, 0xDEADBEEF);
+    status = HW_READ(REG_STATUS);
+    uart_puts("[SYS] STATUS: 0x"); uart_puthex32(status); uart_puts("\n");
+    if (!(status & STATUS_SYS_READY)) {
+        uart_puts("[OK] System is correctly BUSY (waiting for remaining 3 words).\n");
+    }
+    uart_puts("[SYS] Please use 'rst -system' in XSDB now to reset for next run.\n");
+}
+
+int main() {
+    // CRITICAL FIX: 注释掉 cache 禁用，避免在 0x21d60 挂起
+    // Xil_DCacheDisable();
+    // Xil_ICacheDisable();
+
+    // 极短延时，立即尝试 UART
+    for (volatile uint32_t i = 0; i < 1000; ++i) { }
+
+    // 立即输出，不等待
+    uart_putchar('A');
+    uart_putchar('B');
+    uart_putchar('C');
+    uart_putchar('\n');
+
+    uart_puts("\n\n=======================================================\n");
+    uart_puts("   HCS_SOC Bare-Metal Crypto Full Test Suite (v2.1-FIX)   \n");
+    uart_puts("=======================================================\n");
+
+    // 1. 基本 AXI Read 检查
+    uint32_t status = HW_READ(REG_STATUS);
+    uart_puts("[SYS] Initial STATUS: 0x"); uart_puthex32(status); uart_puts("\n");
+    
+    // 硬件指纹验证 (Bit 31-20: 0xACE)
+    uint16_t fingerprint = (status >> 20) & 0xFFF;
+    if (fingerprint == 0xACE) {
+        uart_puts("[VER] Hardware Version: 0xACE (V2.1 Patch Detected) [OK]\n");
+    } else {
+        uart_puts("[ERR] Hardware Fingerprint MISMATCH! Expected 0xACE, got 0x");
+        uart_puthex8((fingerprint >> 4) & 0xFF); uart_puthex8(fingerprint & 0x0F);
+        uart_puts("\n[ERR] BITSTREAM IS OUTDATED! Vivado is using old cache.\n");
+    }
+    
+    // 解析调试位 (基于新 RTL 映射)
+    uint8_t rd_ptr = (status >> 2) & 0x0F;
+    uint8_t wr_ptr = (status >> 6) & 0x0F;
+    uint8_t f_empty = (status >> 10) & 0x01;
+    uint8_t f_full = (status >> 11) & 0x01;
+    
+    uart_puts("[DBG] PBM FIFO: wr_ptr="); uart_puthex8(wr_ptr);
+    uart_puts(", rd_ptr="); uart_puthex8(rd_ptr);
+    uart_puts(", empty="); uart_puthex8(f_empty);
+    uart_puts(", full="); uart_puthex8(f_full);
+    uart_puts("\n");
+
+    if (f_empty == 0) {
+        uart_puts("[WRN] PBM FIFO reports NOT EMPTY at start. Check RESET path!\n");
+    }
+
+    // 2. AES 加解密测试
+    test_aes_encrypt();
+    test_aes_decrypt();
+
+    // 3. SM4 加解密测试
+    test_sm4_all();
+
+    // 4. 安全鲁棒性测试
+    test_security_robustness();
+
+    uart_puts("\n[ALL TESTS FINISHED]\n");
+    while(1);
+    return 0;
+}

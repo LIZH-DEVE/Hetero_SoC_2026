@@ -1,0 +1,10 @@
+
+
+OPTION psf_version = 2.1;
+
+BEGIN DRIVER crypto_accel_axi
+	OPTION supported_peripherals = (crypto_accel_axi);
+	OPTION copyfiles = all;
+	OPTION VERSION = 1.0;
+	OPTION NAME = crypto_accel_axi;
+END DRIVER

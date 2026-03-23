@@ -2,7 +2,8 @@
 # Task 15.1: 5-Tuple Extraction
 # Task 15.2: Enhanced Match Engine (Patch)
 
-set proj_dir "D:/FPGAhanjia/Hetero_SoC_2026"
+set script_dir [file normalize [file dirname [info script]]]
+set proj_dir [file normalize [file join $script_dir .. ..]]
 cd $proj_dir
 
 puts "=========================================="
@@ -16,7 +17,7 @@ puts ""
 puts "Step 1: Compiling RTL files..."
 puts "----------------------------------------"
 
-xvlog -sv -prj day16_compile.prj -log compile.log
+xvlog -sv -prj [file join $script_dir day16_compile.prj] -log compile.log
 if {$::errorCode != 0} {
     puts "ERROR: Compilation failed!"
     exit 1
@@ -31,8 +32,7 @@ puts "Step 2: Elaborating design..."
 puts "----------------------------------------"
 
 xelab -debug typical -relax -snapshot tb_day16_acl_behav \
-      xil_defaultlib.tb_day16_acl \
-      xil_defaultlib.glbl -log elaborate.log
+      xil_defaultlib.tb_day16_acl -log elaborate.log
 
 if {$::errorCode != 0} {
     puts "ERROR: Elaboration failed!"

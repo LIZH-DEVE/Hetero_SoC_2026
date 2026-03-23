@@ -1,0 +1,1 @@
+-debug "typical" "tb_crypto_simple" -snapshot "crypto_verify_snap" -timescale "1ns/1ps" 

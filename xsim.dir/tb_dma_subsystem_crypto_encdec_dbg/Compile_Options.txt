@@ -1,0 +1,1 @@
+-timescale "1ns/1ps" "xil_defaultlib.tb_dma_subsystem_crypto_encdec" -s "tb_dma_subsystem_crypto_encdec_dbg" 

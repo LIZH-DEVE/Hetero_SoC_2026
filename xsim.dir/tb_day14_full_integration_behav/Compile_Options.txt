@@ -1,0 +1,1 @@
+-debug "typical" -relax -snapshot "tb_day14_full_integration_behav" "xil_defaultlib.tb_day14_full_integration" 

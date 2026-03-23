@@ -6,7 +6,8 @@ echo Day 16: Hardware Firewall (ACL) Simulation
 echo ================================================================================
 echo.
 
-cd /d D:\FPGAhanjia\Hetero_SoC_2026
+set SCRIPT_DIR=%~dp0
+cd /d "%SCRIPT_DIR%"
 
 echo Step 1: Cleaning previous build...
 if exist xsim.dir rmdir /s /q xsim.dir
@@ -17,7 +18,7 @@ echo.
 
 echo Step 2: Compiling RTL files...
 echo ----------------------------------------
-call vivado -mode batch -source run_day16_sim.tcl -log day16_vivado.log
+call vivado -mode batch -source "%SCRIPT_DIR%run_day16_sim.tcl" -log day16_vivado.log
 
 if %errorlevel% neq 0 (
     echo ERROR: Vivado simulation failed!

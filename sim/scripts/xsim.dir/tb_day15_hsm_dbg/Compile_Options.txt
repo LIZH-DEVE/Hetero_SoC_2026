@@ -1,0 +1,1 @@
+"xil_defaultlib.tb_day15_hsm" -s "tb_day15_hsm_dbg" 

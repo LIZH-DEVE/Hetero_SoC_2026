@@ -1,517 +1,627 @@
 `timescale 1ns / 1ps
 
 /**
- * Day 17: Zero-Copy FastPath Testbench
- * Task 16.1: FastPath Rules (Patch)
+ * Day 17: Zero-Copy FastPath verification
+ *
+ * Current RTL contract:
+ * - Eligible packets are consumed by fast_path and forwarded to TX/PBM.
+ * - Non-eligible packets are classified as bypass/drop and are not consumed by
+ *   fast_path itself. The module keeps tready low until the external owner of
+ *   that path takes over and meta_valid deasserts.
  */
 
 module tb_day17_fastpath;
 
-    // ========================================================================
-    // Clock and Reset
-    // ========================================================================
-    logic clk;
-    logic rst_n;
-
-    initial begin
-        clk = 0;
-        forever #5 clk = ~clk;
-    end
-
-    initial begin
-        rst_n = 0;
-        #200;
-        rst_n = 1;
-    end
-
-    // ========================================================================
-    // Parameters
-    // ========================================================================
     localparam CRYPTO_PORT = 16'h1234;
     localparam CONFIG_PORT = 16'h4321;
 
-    // ========================================================================
-    // FastPath DUT Interface
-    // ========================================================================
-    logic [31:0]  s_axis_tdata;
-    logic [3:0]   s_axis_tkeep;
-    logic         s_axis_tlast;
-    logic         s_axis_tvalid;
-    logic         s_axis_tready;
+    logic clk;
+    logic rst_n;
+    logic [31:0] s_axis_tdata;
+    logic [3:0]  s_axis_tkeep;
+    logic        s_axis_tlast;
+    logic        s_axis_tvalid;
+    logic        s_axis_tready;
+    logic [15:0] dst_port;
+    logic [15:0] payload_len;
+    logic        drop_flag;
+    logic        meta_valid;
+    logic [15:0] ip_checksum;
+    logic [15:0] udp_checksum;
+    logic        checksum_valid;
+    logic [31:0] pbm_wdata;
+    logic        pbm_wvalid;
+    logic        pbm_wlast;
+    logic        pbm_ready;
+    logic [31:0] m_axis_tdata;
+    logic [3:0]  m_axis_tkeep;
+    logic        m_axis_tlast;
+    logic        m_axis_tvalid;
+    logic        m_axis_tready;
+    logic [15:0] meta_out_data;
+    logic        meta_out_valid;
+    logic [15:0] meta_out_checksum;
+    logic        meta_out_checksum_valid;
+    logic        fast_path_enable;
+    logic [31:0] fast_path_cnt;
+    logic [31:0] bypass_cnt;
+    logic [31:0] drop_cnt;
+    logic [31:0] checksum_pass_cnt;
 
-    logic [15:0]  dst_port;
-    logic [15:0]  payload_len;
-    logic         drop_flag;
-    logic         meta_valid;
+    logic seen_tx;
+    logic seen_pbm;
+    logic seen_meta;
+    logic seen_checksum;
+    integer tx_beat_count;
+    integer pbm_beat_count;
+    logic [31:0] tx_words [0:7];
+    logic [31:0] pbm_words [0:7];
+    logic        tx_lasts [0:7];
+    logic        pbm_lasts [0:7];
 
-    logic [15:0]  ip_checksum;
-    logic [15:0]  udp_checksum;
-    logic         checksum_valid;
+    integer test_pass;
+    integer test_fail;
 
-    logic [31:0]  pbm_wdata;
-    logic         pbm_wvalid;
-    logic         pbm_wlast;
-    logic         pbm_ready;
-
-    logic [31:0]  m_axis_tdata;
-    logic [3:0]   m_axis_tkeep;
-    logic         m_axis_tlast;
-    logic         m_axis_tvalid;
-    logic         m_axis_tready;
-
-    logic [15:0]  meta_out_data;
-    logic         meta_out_valid;
-    logic [15:0]  meta_out_checksum;
-    logic         meta_out_checksum_valid;
-
-    logic         fast_path_enable;
-    logic [31:0]  fast_path_cnt;
-    logic [31:0]  bypass_cnt;
-    logic         drop_cnt;
-    logic [31:0]  checksum_pass_cnt;
-
-    // ========================================================================
-    // DUT Instantiation
-    // ========================================================================
     fast_path #(
         .AXI_DATA_WIDTH(32),
         .CRYPTO_PORT(CRYPTO_PORT),
         .CONFIG_PORT(CONFIG_PORT)
     ) u_fast_path (
-        .clk                 (clk),
-        .rst_n               (rst_n),
-
-        // RX Path Input
-        .s_axis_tdata        (s_axis_tdata),
-        .s_axis_tkeep        (s_axis_tkeep),
-        .s_axis_tlast        (s_axis_tlast),
-        .s_axis_tvalid       (s_axis_tvalid),
-        .s_axis_tready       (s_axis_tready),
-
-        // Control Signals
-        .dst_port            (dst_port),
-        .payload_len         (payload_len),
-        .drop_flag           (drop_flag),
-        .meta_valid          (meta_valid),
-
-        // Checksum Signals
-        .ip_checksum         (ip_checksum),
-        .udp_checksum        (udp_checksum),
-        .checksum_valid      (checksum_valid),
-
-        // PBM Interface
-        .pbm_wdata           (pbm_wdata),
-        .pbm_wvalid          (pbm_wvalid),
-        .pbm_wlast           (pbm_wlast),
-        .pbm_ready           (pbm_ready),
-
-        // TX Path Output
-        .m_axis_tdata        (m_axis_tdata),
-        .m_axis_tkeep        (m_axis_tkeep),
-        .m_axis_tlast        (m_axis_tlast),
-        .m_axis_tvalid       (m_axis_tvalid),
-        .m_axis_tready       (m_axis_tready),
-
-        // Meta Data Output
-        .meta_out_data       (meta_out_data),
-        .meta_out_valid      (meta_out_valid),
-        .meta_out_checksum   (meta_out_checksum),
-        .meta_out_checksum_valid (meta_out_checksum_valid),
-
-        // Status and Statistics
-        .fast_path_enable    (fast_path_enable),
-        .fast_path_cnt       (fast_path_cnt),
-        .bypass_cnt          (bypass_cnt),
-        .drop_cnt            (drop_cnt),
-        .checksum_pass_cnt   (checksum_pass_cnt)
+        .clk(clk),
+        .rst_n(rst_n),
+        .s_axis_tdata(s_axis_tdata),
+        .s_axis_tkeep(s_axis_tkeep),
+        .s_axis_tlast(s_axis_tlast),
+        .s_axis_tvalid(s_axis_tvalid),
+        .s_axis_tready(s_axis_tready),
+        .dst_port(dst_port),
+        .payload_len(payload_len),
+        .drop_flag(drop_flag),
+        .meta_valid(meta_valid),
+        .ip_checksum(ip_checksum),
+        .udp_checksum(udp_checksum),
+        .checksum_valid(checksum_valid),
+        .pbm_wdata(pbm_wdata),
+        .pbm_wvalid(pbm_wvalid),
+        .pbm_wlast(pbm_wlast),
+        .pbm_ready(pbm_ready),
+        .m_axis_tdata(m_axis_tdata),
+        .m_axis_tkeep(m_axis_tkeep),
+        .m_axis_tlast(m_axis_tlast),
+        .m_axis_tvalid(m_axis_tvalid),
+        .m_axis_tready(m_axis_tready),
+        .meta_out_data(meta_out_data),
+        .meta_out_valid(meta_out_valid),
+        .meta_out_checksum(meta_out_checksum),
+        .meta_out_checksum_valid(meta_out_checksum_valid),
+        .fast_path_enable(fast_path_enable),
+        .fast_path_cnt(fast_path_cnt),
+        .bypass_cnt(bypass_cnt),
+        .drop_cnt(drop_cnt),
+        .checksum_pass_cnt(checksum_pass_cnt)
     );
 
-    // ========================================================================
-    // Task: Send UDP Packet
-    // ========================================================================
-    task send_udp_packet;
-        input [15:0] src_port_num;
-        input [15:0] dst_port_num;
-        input [15:0] payload_length;
-        input [31:0] payload_data;
-        input        acl_drop;
-        input        checksum_en;
-        begin
-            $display("[%0t] Sending UDP packet", $time);
-            $display("  Src Port: %d", src_port_num);
-            $display("  Dst Port: %d", dst_port_num);
-            $display("  Payload Length: %d", payload_length);
-            $display("  ACL Drop: %d", acl_drop);
-            $display("  Checksum: %d", checksum_en);
+    initial begin
+        clk = 1'b0;
+        forever #5 clk = ~clk;
+    end
 
-            // Set control signals
-            dst_port = dst_port_num;
-            payload_len = payload_length;
-            drop_flag = acl_drop;
-            meta_valid = 1'b1;
+    initial begin
+        rst_n = 1'b0;
+        #40;
+        rst_n = 1'b1;
+    end
 
-            if (checksum_en) begin
-                ip_checksum = 16'h1234;
-                udp_checksum = 16'h5678;
-                checksum_valid = 1'b1;
-            end else begin
-                checksum_valid = 1'b0;
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            seen_tx <= 1'b0;
+            seen_pbm <= 1'b0;
+            seen_meta <= 1'b0;
+            seen_checksum <= 1'b0;
+            tx_beat_count <= 0;
+            pbm_beat_count <= 0;
+        end else begin
+            if (m_axis_tvalid && m_axis_tready) begin
+                seen_tx <= 1'b1;
+                if (tx_beat_count < 8) begin
+                    tx_words[tx_beat_count] <= m_axis_tdata;
+                    tx_lasts[tx_beat_count] <= m_axis_tlast;
+                end
+                tx_beat_count <= tx_beat_count + 1;
             end
+            if (pbm_wvalid && pbm_ready) begin
+                seen_pbm <= 1'b1;
+                if (pbm_beat_count < 8) begin
+                    pbm_words[pbm_beat_count] <= pbm_wdata;
+                    pbm_lasts[pbm_beat_count] <= pbm_wlast;
+                end
+                pbm_beat_count <= pbm_beat_count + 1;
+            end
+            if (meta_out_valid) begin
+                seen_meta <= 1'b1;
+            end
+            if (meta_out_checksum_valid && meta_out_checksum == 16'h5678) begin
+                seen_checksum <= 1'b1;
+            end
+        end
+    end
 
-            // Send header (skip for simplicity)
-            s_axis_tdata = 32'hDEADBEEF;
-            s_axis_tkeep = 4'hF;
-            s_axis_tlast = 1'b0;
-            s_axis_tvalid = 1'b1;
-            @(posedge clk);
-            while (!s_axis_tready) @(posedge clk);
-
-            // Send payload
-            s_axis_tdata = payload_data;
-            s_axis_tkeep = 4'hF;
-            s_axis_tlast = 1'b1;
-            s_axis_tvalid = 1'b1;
-            @(posedge clk);
-            while (!s_axis_tready) @(posedge clk);
-
-            // Reset signals
-            s_axis_tvalid = 1'b0;
-            meta_valid = 1'b0;
-            checksum_valid = 1'b0;
-
-            $display("[%0t] UDP packet sent", $time);
+    task automatic clear_monitors;
+        integer idx;
+        begin
+            seen_tx = 1'b0;
+            seen_pbm = 1'b0;
+            seen_meta = 1'b0;
+            seen_checksum = 1'b0;
+            tx_beat_count = 0;
+            pbm_beat_count = 0;
+            for (idx = 0; idx < 8; idx = idx + 1) begin
+                tx_words[idx] = '0;
+                pbm_words[idx] = '0;
+                tx_lasts[idx] = 1'b0;
+                pbm_lasts[idx] = 1'b0;
+            end
         end
     endtask
 
-    // ========================================================================
-    // Test Cases
-    // ========================================================================
-    int test_pass;
-    int test_fail;
-    logic [31:0] fp_cnt_before;
-    logic [31:0] bp_cnt_before;
-    logic         drop_cnt_before;
-    logic [31:0] cs_pass_cnt_before;
+    task automatic record_two_beat_alignment(
+        input [31:0] expected_word0,
+        input [31:0] expected_word1,
+        input string pass_msg,
+        input string fail_prefix
+    );
+        begin
+            record_result(
+                tx_beat_count == 2 &&
+                pbm_beat_count == 2 &&
+                tx_words[0] == expected_word0 &&
+                tx_words[1] == expected_word1 &&
+                pbm_words[0] == expected_word0 &&
+                pbm_words[1] == expected_word1 &&
+                tx_words[0] == pbm_words[0] &&
+                tx_words[1] == pbm_words[1] &&
+                tx_lasts[0] == 1'b0 &&
+                tx_lasts[1] == 1'b1 &&
+                pbm_lasts[0] == 1'b0 &&
+                pbm_lasts[1] == 1'b1,
+                pass_msg,
+                $sformatf("%s: tx_count=%0d pbm_count=%0d tx0=%h tx1=%h pbm0=%h pbm1=%h tx_last={%0d,%0d} pbm_last={%0d,%0d}",
+                          fail_prefix, tx_beat_count, pbm_beat_count,
+                          tx_words[0], tx_words[1], pbm_words[0], pbm_words[1],
+                          tx_lasts[0], tx_lasts[1], pbm_lasts[0], pbm_lasts[1])
+            );
+        end
+    endtask
+
+    task automatic clear_drive;
+        begin
+            s_axis_tdata <= '0;
+            s_axis_tkeep <= 4'hF;
+            s_axis_tlast <= 1'b0;
+            s_axis_tvalid <= 1'b0;
+            dst_port <= '0;
+            payload_len <= '0;
+            drop_flag <= 1'b0;
+            meta_valid <= 1'b0;
+            ip_checksum <= '0;
+            udp_checksum <= '0;
+            checksum_valid <= 1'b0;
+        end
+    endtask
+
+    task automatic drive_fast_packet(
+        input [15:0] port,
+        input [15:0] length,
+        input        checksum_en
+    );
+        begin
+            dst_port <= port;
+            payload_len <= length;
+            drop_flag <= 1'b0;
+            meta_valid <= 1'b1;
+            ip_checksum <= 16'h1234;
+            udp_checksum <= 16'h5678;
+            checksum_valid <= checksum_en;
+
+            s_axis_tdata <= 32'hDEAD_BEEF;
+            s_axis_tkeep <= 4'hF;
+            s_axis_tlast <= 1'b0;
+            s_axis_tvalid <= 1'b1;
+            do @(posedge clk); while (!s_axis_tready);
+
+            s_axis_tdata <= 32'hAABB_CCDD;
+            s_axis_tlast <= 1'b1;
+            do @(posedge clk); while (!s_axis_tready);
+
+            clear_drive();
+        end
+    endtask
+
+    task automatic hold_non_fast_packet_for_classification(
+        input [15:0] port,
+        input [15:0] length,
+        input        acl_drop
+    );
+        begin
+            dst_port <= port;
+            payload_len <= length;
+            drop_flag <= acl_drop;
+            meta_valid <= 1'b1;
+            ip_checksum <= 16'h1234;
+            udp_checksum <= 16'h5678;
+            checksum_valid <= 1'b1;
+            s_axis_tdata <= 32'hDEAD_BEEF;
+            s_axis_tkeep <= 4'hF;
+            s_axis_tlast <= 1'b0;
+            s_axis_tvalid <= 1'b1;
+        end
+    endtask
+
+    task automatic record_result(input bit cond, input string pass_msg, input string fail_msg);
+        begin
+            if (cond) begin
+                $display("[PASS] %s", pass_msg);
+                test_pass++;
+            end else begin
+                $display("[FAIL] %s", fail_msg);
+                test_fail++;
+            end
+        end
+    endtask
 
     initial begin
         test_pass = 0;
         test_fail = 0;
-        s_axis_tvalid = 1'b0;
-        s_axis_tdata = 32'h0;
-        s_axis_tkeep = 4'h0;
-        s_axis_tlast = 1'b0;
-        dst_port = 16'h0;
-        payload_len = 16'h0;
-        drop_flag = 1'b0;
-        meta_valid = 1'b0;
-        ip_checksum = 16'h0;
-        udp_checksum = 16'h0;
-        checksum_valid = 1'b0;
         pbm_ready = 1'b1;
         m_axis_tready = 1'b1;
+        clear_drive();
 
         wait(rst_n);
-        #1000;
+        repeat (4) @(posedge clk);
 
         $display("========================================");
         $display("Day 17: Zero-Copy FastPath");
         $display("========================================");
-        $display();
-        $display("Task 16.1: FastPath Rules (Patch)");
-        $display("  CRYPTO Port: 0x%h", CRYPTO_PORT);
-        $display("  CONFIG Port: 0x%h", CONFIG_PORT);
-        $display();
 
-        // ====================================================================
-        // Test 1: FastPath Condition Met (Normal Port)
-        // ====================================================================
-        $display("========================================");
-        $display("Test 1: FastPath Condition Met");
-        $display("  Dst Port: 0x%h (not CRYPTO/CONFIG)", 16'h1235);
-        $display("  Payload Length: 32 (16-byte aligned)");
-        $display("  ACL Drop: 0");
-        $display("========================================");
-        $display();
+        clear_monitors();
+        drive_fast_packet(16'h1235, 16'd32, 1'b1);
+        repeat (4) @(posedge clk);
+        record_result(
+            fast_path_cnt == 32'd1 &&
+            checksum_pass_cnt == 32'd1 &&
+            seen_tx && seen_pbm && seen_meta && seen_checksum,
+            "Eligible packet used FastPath and preserved checksum",
+            $sformatf("Eligible packet failed: fp_cnt=%0d cs_cnt=%0d seen_tx=%0d seen_pbm=%0d seen_meta=%0d seen_checksum=%0d",
+                      fast_path_cnt, checksum_pass_cnt, seen_tx, seen_pbm, seen_meta, seen_checksum)
+        );
+        record_two_beat_alignment(
+            32'hDEAD_BEEF,
+            32'hAABB_CCDD,
+            "Eligible packet kept TX and PBM beats aligned",
+            "Eligible packet alignment mismatch"
+        );
 
-        fp_cnt_before = fast_path_cnt;
-        bp_cnt_before = bypass_cnt;
-        drop_cnt_before = drop_cnt;
-        cs_pass_cnt_before = checksum_pass_cnt;
+        clear_monitors();
+        pbm_ready <= 1'b0;
+        dst_port <= 16'h1235;
+        payload_len <= 16'd32;
+        drop_flag <= 1'b0;
+        meta_valid <= 1'b1;
+        ip_checksum <= 16'h1234;
+        udp_checksum <= 16'h5678;
+        checksum_valid <= 1'b1;
+        s_axis_tdata <= 32'hCAFE_BABE;
+        s_axis_tkeep <= 4'hF;
+        s_axis_tlast <= 1'b0;
+        s_axis_tvalid <= 1'b1;
+        repeat (6) @(posedge clk);
+        record_result(
+            s_axis_tready == 1'b0 &&
+            fast_path_cnt == 32'd1 &&
+            checksum_pass_cnt == 32'd1,
+            "PBM back-pressure stalls eligible packet before completion",
+            $sformatf("PBM back-pressure mismatch: tready=%0d fp_cnt=%0d cs_cnt=%0d",
+                      s_axis_tready, fast_path_cnt, checksum_pass_cnt)
+        );
+        pbm_ready <= 1'b1;
+        do @(posedge clk); while (!s_axis_tready);
+        s_axis_tdata <= 32'h1234_5678;
+        s_axis_tlast <= 1'b1;
+        do @(posedge clk); while (!s_axis_tready);
+        clear_drive();
+        repeat (4) @(posedge clk);
+        record_result(
+            fast_path_cnt == 32'd2 &&
+            checksum_pass_cnt == 32'd2,
+            "PBM back-pressure packet completes after ready restore",
+            $sformatf("PBM restore mismatch: fp_cnt=%0d cs_cnt=%0d", fast_path_cnt, checksum_pass_cnt)
+        );
+        record_two_beat_alignment(
+            32'hCAFE_BABE,
+            32'h1234_5678,
+            "PBM-stalled packet kept TX and PBM beats aligned after restore",
+            "PBM-stalled alignment mismatch"
+        );
 
-        send_udp_packet(16'h1000, 16'h1235, 16'd32, 32'hAABBCCDD, 1'b0, 1'b1);
+        clear_monitors();
+        m_axis_tready <= 1'b0;
+        dst_port <= 16'h1235;
+        payload_len <= 16'd32;
+        drop_flag <= 1'b0;
+        meta_valid <= 1'b1;
+        ip_checksum <= 16'h1234;
+        udp_checksum <= 16'h5678;
+        checksum_valid <= 1'b1;
+        s_axis_tdata <= 32'hABCD_0001;
+        s_axis_tkeep <= 4'hF;
+        s_axis_tlast <= 1'b0;
+        s_axis_tvalid <= 1'b1;
+        repeat (6) @(posedge clk);
+        record_result(
+            s_axis_tready == 1'b0 &&
+            fast_path_cnt == 32'd2 &&
+            checksum_pass_cnt == 32'd2,
+            "TX back-pressure stalls eligible packet before completion",
+            $sformatf("TX back-pressure mismatch: tready=%0d fp_cnt=%0d cs_cnt=%0d",
+                      s_axis_tready, fast_path_cnt, checksum_pass_cnt)
+        );
+        m_axis_tready <= 1'b1;
+        do @(posedge clk); while (!s_axis_tready);
+        s_axis_tdata <= 32'hABCD_0002;
+        s_axis_tlast <= 1'b1;
+        do @(posedge clk); while (!s_axis_tready);
+        clear_drive();
+        repeat (4) @(posedge clk);
+        record_result(
+            fast_path_cnt == 32'd3 &&
+            checksum_pass_cnt == 32'd3,
+            "TX back-pressure packet completes after ready restore",
+            $sformatf("TX restore mismatch: fp_cnt=%0d cs_cnt=%0d", fast_path_cnt, checksum_pass_cnt)
+        );
+        record_two_beat_alignment(
+            32'hABCD_0001,
+            32'hABCD_0002,
+            "TX-stalled packet kept TX and PBM beats aligned after restore",
+            "TX-stalled alignment mismatch"
+        );
 
-        #1000;
+        clear_monitors();
+        pbm_ready <= 1'b0;
+        m_axis_tready <= 1'b0;
+        dst_port <= 16'h1235;
+        payload_len <= 16'd32;
+        drop_flag <= 1'b0;
+        meta_valid <= 1'b1;
+        ip_checksum <= 16'h1234;
+        udp_checksum <= 16'h5678;
+        checksum_valid <= 1'b1;
+        s_axis_tdata <= 32'hABCD_1001;
+        s_axis_tkeep <= 4'hF;
+        s_axis_tlast <= 1'b0;
+        s_axis_tvalid <= 1'b1;
+        repeat (6) @(posedge clk);
+        record_result(
+            s_axis_tready == 1'b0 &&
+            fast_path_cnt == 32'd3 &&
+            checksum_pass_cnt == 32'd3,
+            "Combined TX/PBM back-pressure stalls eligible packet before completion",
+            $sformatf("Combined back-pressure mismatch: tready=%0d fp_cnt=%0d cs_cnt=%0d",
+                      s_axis_tready, fast_path_cnt, checksum_pass_cnt)
+        );
+        pbm_ready <= 1'b1;
+        m_axis_tready <= 1'b1;
+        do @(posedge clk); while (!s_axis_tready);
+        s_axis_tdata <= 32'hABCD_1002;
+        s_axis_tlast <= 1'b1;
+        do @(posedge clk); while (!s_axis_tready);
+        clear_drive();
+        repeat (4) @(posedge clk);
+        record_result(
+            fast_path_cnt == 32'd4 &&
+            checksum_pass_cnt == 32'd4,
+            "Combined back-pressure packet completes after both ready signals restore",
+            $sformatf("Combined restore mismatch: fp_cnt=%0d cs_cnt=%0d", fast_path_cnt, checksum_pass_cnt)
+        );
+        record_two_beat_alignment(
+            32'hABCD_1001,
+            32'hABCD_1002,
+            "Combined-stall packet kept TX and PBM beats aligned after restore",
+            "Combined-stall alignment mismatch"
+        );
 
-        if (fast_path_cnt == fp_cnt_before + 1 && 
-            fast_path_enable && 
-            meta_out_valid && 
-            meta_out_checksum_valid &&
-            meta_out_checksum == 16'h5678) begin
-            $display("✅ Test 1 PASS: FastPath enabled, checksum passed");
-            $display("  FastPath Count: %d (expected %d)", fast_path_cnt, fp_cnt_before + 1);
-            $display("  Bypass Count: %d (expected %d)", bypass_cnt, bp_cnt_before);
-            $display("  Drop Count: %d (expected %d)", drop_cnt, drop_cnt_before);
-            $display("  Checksum Pass Count: %d (expected %d)", checksum_pass_cnt, cs_pass_cnt_before + 1);
-            test_pass++;
-        end else begin
-            $display("❌ Test 1 FAIL: FastPath not enabled correctly");
-            $display("  FastPath Enable: %d", fast_path_enable);
-            $display("  FastPath Count: %d (expected %d)", fast_path_cnt, fp_cnt_before + 1);
-            $display("  Meta Valid: %d", meta_out_valid);
-            $display("  Meta Checksum Valid: %d", meta_out_checksum_valid);
-            test_fail++;
-        end
-        $display();
+        clear_monitors();
+        hold_non_fast_packet_for_classification(CRYPTO_PORT, 16'd32, 1'b0);
+        repeat (6) @(posedge clk);
+        record_result(
+            s_axis_tready == 1'b0 &&
+            bypass_cnt == 32'd1 &&
+            !seen_tx && !seen_pbm && !seen_meta,
+            "Crypto port packet classified as bypass",
+            $sformatf("Crypto bypass mismatch: tready=%0d bypass_cnt=%0d seen_tx=%0d seen_pbm=%0d seen_meta=%0d",
+                      s_axis_tready, bypass_cnt, seen_tx, seen_pbm, seen_meta)
+        );
+        clear_drive();
+        repeat (2) @(posedge clk);
+        record_result(
+            !fast_path_enable &&
+            bypass_cnt == 32'd1 &&
+            s_axis_tready == 1'b0,
+            "BYPASS state recovers cleanly when meta_valid drops",
+            $sformatf("BYPASS recovery mismatch: fast_path_enable=%0d bypass_cnt=%0d tready=%0d",
+                      fast_path_enable, bypass_cnt, s_axis_tready)
+        );
 
-        // ====================================================================
-        // Test 2: Crypto Port (Should Bypass)
-        // ====================================================================
-        $display("========================================");
-        $display("Test 2: Crypto Port (Should Bypass)");
-        $display("  Dst Port: 0x%h (CRYPTO)", CRYPTO_PORT);
-        $display("  Payload Length: 32 (16-byte aligned)");
-        $display("  ACL Drop: 0");
-        $display("========================================");
-        $display();
+        clear_monitors();
+        hold_non_fast_packet_for_classification(CONFIG_PORT, 16'd32, 1'b0);
+        repeat (6) @(posedge clk);
+        record_result(
+            s_axis_tready == 1'b0 &&
+            bypass_cnt == 32'd2 &&
+            !seen_tx && !seen_pbm && !seen_meta,
+            "Config port packet classified as bypass",
+            $sformatf("Config bypass mismatch: tready=%0d bypass_cnt=%0d seen_tx=%0d seen_pbm=%0d seen_meta=%0d",
+                      s_axis_tready, bypass_cnt, seen_tx, seen_pbm, seen_meta)
+        );
+        clear_drive();
+        repeat (2) @(posedge clk);
 
-        fp_cnt_before = fast_path_cnt;
-        bp_cnt_before = bypass_cnt;
+        clear_monitors();
+        hold_non_fast_packet_for_classification(16'h1235, 16'd32, 1'b1);
+        repeat (6) @(posedge clk);
+        record_result(
+            s_axis_tready == 1'b0 &&
+            bypass_cnt == 32'd2 &&
+            drop_cnt == 32'd1 &&
+            !seen_tx && !seen_pbm && !seen_meta,
+            "ACL drop packet classified without entering FastPath",
+            $sformatf("ACL drop mismatch: tready=%0d bypass_cnt=%0d drop_cnt=%0d seen_tx=%0d seen_pbm=%0d seen_meta=%0d",
+                      s_axis_tready, bypass_cnt, drop_cnt, seen_tx, seen_pbm, seen_meta)
+        );
+        clear_drive();
+        repeat (2) @(posedge clk);
 
-        send_udp_packet(16'h1000, CRYPTO_PORT, 16'd32, 32'hAABBCCDD, 1'b0, 1'b1);
+        clear_monitors();
+        hold_non_fast_packet_for_classification(16'h1235, 16'd31, 1'b0);
+        repeat (6) @(posedge clk);
+        record_result(
+            s_axis_tready == 1'b0 &&
+            bypass_cnt == 32'd3 &&
+            !seen_tx && !seen_pbm && !seen_meta,
+            "Misaligned payload classified as bypass",
+            $sformatf("Misaligned payload mismatch: tready=%0d bypass_cnt=%0d seen_tx=%0d seen_pbm=%0d seen_meta=%0d",
+                      s_axis_tready, bypass_cnt, seen_tx, seen_pbm, seen_meta)
+        );
+        clear_drive();
+        repeat (2) @(posedge clk);
 
-        #1000;
+        clear_monitors();
+        hold_non_fast_packet_for_classification(16'h1235, 16'd0, 1'b0);
+        repeat (6) @(posedge clk);
+        record_result(
+            s_axis_tready == 1'b0 &&
+            bypass_cnt == 32'd4 &&
+            !seen_tx && !seen_pbm && !seen_meta,
+            "Zero-length payload classified as bypass",
+            $sformatf("Zero-length mismatch: tready=%0d bypass_cnt=%0d seen_tx=%0d seen_pbm=%0d seen_meta=%0d",
+                      s_axis_tready, bypass_cnt, seen_tx, seen_pbm, seen_meta)
+        );
+        clear_drive();
+        repeat (2) @(posedge clk);
 
-        if (!fast_path_enable && bypass_cnt == bp_cnt_before + 1) begin
-            $display("✅ Test 2 PASS: Crypto port bypassed");
-            $display("  FastPath Count: %d (expected %d)", fast_path_cnt, fp_cnt_before);
-            $display("  Bypass Count: %d (expected %d)", bypass_cnt, bp_cnt_before + 1);
-            test_pass++;
-        end else begin
-            $display("❌ Test 2 FAIL: Crypto port not bypassed correctly");
-            $display("  FastPath Enable: %d", fast_path_enable);
-            $display("  FastPath Count: %d (expected %d)", fast_path_cnt, fp_cnt_before);
-            $display("  Bypass Count: %d (expected %d)", bypass_cnt, bp_cnt_before + 1);
-            test_fail++;
-        end
-        $display();
+        clear_monitors();
+        drive_fast_packet(16'h1235, 16'd32, 1'b0);
+        repeat (4) @(posedge clk);
+        record_result(
+            fast_path_cnt == 32'd5 &&
+            checksum_pass_cnt == 32'd4 &&
+            seen_tx && seen_pbm && seen_meta && !seen_checksum && !meta_out_checksum_valid,
+            "Eligible packet without checksum stayed on FastPath",
+            $sformatf("Checksum-disabled fast path mismatch: fp_cnt=%0d cs_cnt=%0d seen_tx=%0d seen_pbm=%0d seen_meta=%0d seen_checksum=%0d meta_out_checksum_valid=%0d",
+                      fast_path_cnt, checksum_pass_cnt, seen_tx, seen_pbm, seen_meta, seen_checksum, meta_out_checksum_valid)
+        );
 
-        // ====================================================================
-        // Test 3: Config Port (Should Bypass)
-        // ====================================================================
-        $display("========================================");
-        $display("Test 3: Config Port (Should Bypass)");
-        $display("  Dst Port: 0x%h (CONFIG)", CONFIG_PORT);
-        $display("  Payload Length: 32 (16-byte aligned)");
-        $display("  ACL Drop: 0");
-        $display("========================================");
-        $display();
+        clear_monitors();
+        drive_fast_packet(16'h1235, 16'd32, 1'b1);
+        drive_fast_packet(16'h1235, 16'd32, 1'b1);
+        repeat (4) @(posedge clk);
+        record_result(
+            fast_path_cnt == 32'd7 &&
+            checksum_pass_cnt == 32'd6,
+            "Consecutive eligible packets accumulate counters correctly",
+            $sformatf("Consecutive packet mismatch: fp_cnt=%0d cs_cnt=%0d", fast_path_cnt, checksum_pass_cnt)
+        );
 
-        fp_cnt_before = fast_path_cnt;
-        bp_cnt_before = bypass_cnt;
+        clear_monitors();
+        dst_port <= 16'h1235;
+        payload_len <= 16'd32;
+        drop_flag <= 1'b0;
+        meta_valid <= 1'b1;
+        ip_checksum <= 16'h1234;
+        udp_checksum <= 16'h5678;
+        checksum_valid <= 1'b1;
+        s_axis_tdata <= 32'h0BAD_F00D;
+        s_axis_tkeep <= 4'hF;
+        s_axis_tlast <= 1'b0;
+        s_axis_tvalid <= 1'b1;
+        do @(posedge clk); while (!s_axis_tready);
+        s_axis_tvalid <= 1'b0;
+        repeat (4) @(posedge clk);
+        record_result(
+            fast_path_cnt == 32'd7 &&
+            checksum_pass_cnt == 32'd6 &&
+            fast_path_enable,
+            "Transient valid drop does not complete packet early",
+            $sformatf("Transient valid-drop mismatch before resume: fp_cnt=%0d cs_cnt=%0d fast_path_enable=%0d",
+                      fast_path_cnt, checksum_pass_cnt, fast_path_enable)
+        );
+        s_axis_tdata <= 32'h0BAD_F00E;
+        s_axis_tlast <= 1'b1;
+        s_axis_tvalid <= 1'b1;
+        do @(posedge clk); while (!s_axis_tready);
+        clear_drive();
+        repeat (4) @(posedge clk);
+        record_result(
+            fast_path_cnt == 32'd8 &&
+            checksum_pass_cnt == 32'd7,
+            "Transient valid drop packet completes after traffic resumes",
+            $sformatf("Transient valid-drop mismatch after resume: fp_cnt=%0d cs_cnt=%0d",
+                      fast_path_cnt, checksum_pass_cnt)
+        );
 
-        send_udp_packet(16'h1000, CONFIG_PORT, 16'd32, 32'hAABBCCDD, 1'b0, 1'b1);
+        clear_monitors();
+        dst_port <= 16'h1235;
+        payload_len <= 16'd32;
+        drop_flag <= 1'b0;
+        meta_valid <= 1'b1;
+        ip_checksum <= 16'h1234;
+        udp_checksum <= 16'h5678;
+        checksum_valid <= 1'b1;
+        s_axis_tdata <= 32'hCA11_AB1E;
+        s_axis_tkeep <= 4'hF;
+        s_axis_tlast <= 1'b0;
+        s_axis_tvalid <= 1'b1;
+        do @(posedge clk); while (!s_axis_tready);
+        rst_n <= 1'b0;
+        repeat (2) @(posedge clk);
+        rst_n <= 1'b1;
+        clear_drive();
+        repeat (4) @(posedge clk);
+        record_result(
+            fast_path_cnt == 32'd0 &&
+            bypass_cnt == 32'd0 &&
+            drop_cnt == 32'd0 &&
+            checksum_pass_cnt == 32'd0 &&
+            !fast_path_enable,
+            "Mid-packet reset clears counters and returns to idle",
+            $sformatf("Mid-packet reset mismatch: fp_cnt=%0d bypass_cnt=%0d drop_cnt=%0d cs_cnt=%0d fast_path_enable=%0d",
+                      fast_path_cnt, bypass_cnt, drop_cnt, checksum_pass_cnt, fast_path_enable)
+        );
 
-        #1000;
+        clear_monitors();
+        drive_fast_packet(16'h1235, 16'd32, 1'b1);
+        repeat (4) @(posedge clk);
+        record_result(
+            fast_path_cnt == 32'd1 &&
+            checksum_pass_cnt == 32'd1 &&
+            seen_tx && seen_pbm && seen_meta && seen_checksum,
+            "FastPath recovers cleanly after mid-packet reset",
+            $sformatf("Post-reset recovery mismatch: fp_cnt=%0d cs_cnt=%0d seen_tx=%0d seen_pbm=%0d seen_meta=%0d seen_checksum=%0d",
+                      fast_path_cnt, checksum_pass_cnt, seen_tx, seen_pbm, seen_meta, seen_checksum)
+        );
 
-        if (!fast_path_enable && bypass_cnt == bp_cnt_before + 1) begin
-            $display("✅ Test 3 PASS: Config port bypassed");
-            $display("  FastPath Count: %d (expected %d)", fast_path_cnt, fp_cnt_before);
-            $display("  Bypass Count: %d (expected %d)", bypass_cnt, bp_cnt_before + 1);
-            test_pass++;
-        end else begin
-            $display("❌ Test 3 FAIL: Config port not bypassed correctly");
-            $display("  FastPath Enable: %d", fast_path_enable);
-            $display("  FastPath Count: %d (expected %d)", fast_path_cnt, fp_cnt_before);
-            $display("  Bypass Count: %d (expected %d)", bypass_cnt, bp_cnt_before + 1);
-            test_fail++;
-        end
-        $display();
-
-        // ====================================================================
-        // Test 4: ACL Drop (Should Drop)
-        // ====================================================================
-        $display("========================================");
-        $display("Test 4: ACL Drop (Should Drop)");
-        $display("  Dst Port: 0x%h (not CRYPTO/CONFIG)", 16'h1235);
-        $display("  Payload Length: 32 (16-byte aligned)");
-        $display("  ACL Drop: 1");
-        $display("========================================");
-        $display();
-
-        fp_cnt_before = fast_path_cnt;
-        bp_cnt_before = bypass_cnt;
-        drop_cnt_before = drop_cnt;
-
-        send_udp_packet(16'h1000, 16'h1235, 16'd32, 32'hAABBCCDD, 1'b1, 1'b1);
-
-        #1000;
-
-        if (!fast_path_enable && bypass_cnt == bp_cnt_before && drop_cnt == drop_cnt_before + 1) begin
-            $display("✅ Test 4 PASS: ACL drop working");
-            $display("  FastPath Count: %d (expected %d)", fast_path_cnt, fp_cnt_before);
-            $display("  Bypass Count: %d (expected %d)", bypass_cnt, bp_cnt_before);
-            $display("  Drop Count: %d (expected %d)", drop_cnt, drop_cnt_before + 1);
-            test_pass++;
-        end else begin
-            $display("❌ Test 4 FAIL: ACL drop not working");
-            $display("  FastPath Enable: %d", fast_path_enable);
-            $display("  FastPath Count: %d (expected %d)", fast_path_cnt, fp_cnt_before);
-            $display("  Bypass Count: %d (expected %d)", bypass_cnt, bp_cnt_before);
-            $display("  Drop Count: %d (expected %d)", drop_cnt, drop_cnt_before + 1);
-            test_fail++;
-        end
-        $display();
-
-        // ====================================================================
-        // Test 5: Payload Not Aligned (Should Bypass)
-        // ====================================================================
-        $display("========================================");
-        $display("Test 5: Payload Not Aligned (Should Bypass)");
-        $display("  Dst Port: 0x%h (not CRYPTO/CONFIG)", 16'h1235);
-        $display("  Payload Length: 31 (not 16-byte aligned)");
-        $display("  ACL Drop: 0");
-        $display("========================================");
-        $display();
-
-        fp_cnt_before = fast_path_cnt;
-        bp_cnt_before = bypass_cnt;
-
-        send_udp_packet(16'h1000, 16'h1235, 16'd31, 32'hAABBCCDD, 1'b0, 1'b1);
-
-        #1000;
-
-        if (!fast_path_enable && bypass_cnt == bp_cnt_before + 1) begin
-            $display("✅ Test 5 PASS: Non-aligned payload bypassed");
-            $display("  FastPath Count: %d (expected %d)", fast_path_cnt, fp_cnt_before);
-            $display("  Bypass Count: %d (expected %d)", bypass_cnt, bp_cnt_before + 1);
-            test_pass++;
-        end else begin
-            $display("❌ Test 5 FAIL: Non-aligned payload not bypassed");
-            $display("  FastPath Enable: %d", fast_path_enable);
-            $display("  FastPath Count: %d (expected %d)", fast_path_cnt, fp_cnt_before);
-            $display("  Bypass Count: %d (expected %d)", bypass_cnt, bp_cnt_before + 1);
-            test_fail++;
-        end
-        $display();
-
-        // ====================================================================
-        // Test 6: Zero Payload Length (Should Bypass)
-        // ====================================================================
-        $display("========================================");
-        $display("Test 6: Zero Payload Length (Should Bypass)");
-        $display("  Dst Port: 0x%h (not CRYPTO/CONFIG)", 16'h1235);
-        $display("  Payload Length: 0");
-        $display("  ACL Drop: 0");
-        $display("========================================");
-        $display();
-
-        fp_cnt_before = fast_path_cnt;
-        bp_cnt_before = bypass_cnt;
-
-        send_udp_packet(16'h1000, 16'h1235, 16'd0, 32'hAABBCCDD, 1'b0, 1'b1);
-
-        #1000;
-
-        if (!fast_path_enable && bypass_cnt == bp_cnt_before + 1) begin
-            $display("✅ Test 6 PASS: Zero payload bypassed");
-            $display("  FastPath Count: %d (expected %d)", fast_path_cnt, fp_cnt_before);
-            $display("  Bypass Count: %d (expected %d)", bypass_cnt, bp_cnt_before + 1);
-            test_pass++;
-        end else begin
-            $display("❌ Test 6 FAIL: Zero payload not bypassed");
-            $display("  FastPath Enable: %d", fast_path_enable);
-            $display("  FastPath Count: %d (expected %d)", fast_path_cnt, fp_cnt_before);
-            $display("  Bypass Count: %d (expected %d)", bypass_cnt, bp_cnt_before + 1);
-            test_fail++;
-        end
-        $display();
-
-        // ====================================================================
-        // Test 7: Checksum Passthrough (No Checksum)
-        // ====================================================================
-        $display("========================================");
-        $display("Test 7: Checksum Passthrough (No Checksum)");
-        $display("  Dst Port: 0x%h (not CRYPTO/CONFIG)", 16'h1235);
-        $display("  Payload Length: 32 (16-byte aligned)");
-        $display("  ACL Drop: 0");
-        $display("  Checksum Valid: 0");
-        $display("========================================");
-        $display();
-
-        fp_cnt_before = fast_path_cnt;
-        cs_pass_cnt_before = checksum_pass_cnt;
-
-        send_udp_packet(16'h1000, 16'h1235, 16'd32, 32'hAABBCCDD, 1'b0, 1'b0);
-
-        #1000;
-
-        if (fast_path_cnt == fp_cnt_before + 1 && 
-            fast_path_enable && 
-            meta_out_valid && 
-            !meta_out_checksum_valid &&
-            checksum_pass_cnt == cs_pass_cnt_before) begin
-            $display("✅ Test 7 PASS: FastPath enabled, checksum not passed");
-            $display("  FastPath Count: %d (expected %d)", fast_path_cnt, fp_cnt_before + 1);
-            $display("  Meta Checksum Valid: %d (expected 0)", meta_out_checksum_valid);
-            $display("  Checksum Pass Count: %d (expected %d)", checksum_pass_cnt, cs_pass_cnt_before);
-            test_pass++;
-        end else begin
-            $display("❌ Test 7 FAIL: Checksum passthrough not working");
-            $display("  FastPath Enable: %d", fast_path_enable);
-            $display("  Meta Valid: %d", meta_out_valid);
-            $display("  Meta Checksum Valid: %d", meta_out_checksum_valid);
-            test_fail++;
-        end
-        $display();
-
-        // ====================================================================
-        // Test Summary
-        // ====================================================================
         $display("========================================");
         $display("Day 17 Test Summary");
         $display("========================================");
-        $display("Total Tests: %d", test_pass + test_fail);
-        $display("Passed:      %d", test_pass);
-        $display("Failed:      %d", test_fail);
-        $display();
+        $display("Total Tests: %0d", test_pass + test_fail);
+        $display("Passed:      %0d", test_pass);
+        $display("Failed:      %0d", test_fail);
 
-        if (test_fail == 0) begin
-            $display("✅ All tests passed!");
-            $display();
-            $display("Task 16.1: FastPath Rules (Patch) - ✅ PASS");
-            $display();
-            $display("FastPath Rules:");
-            $display("  - Dst Port check (CRYPTO/CONFIG): OK");
-            $display("  - ACL Drop check: OK");
-            $display("  - Payload Length check: OK");
-            $display("  - Payload Alignment check: OK");
-            $display();
-            $display("Zero-Copy Features:");
-            $display("  - PBM direct passthrough: OK");
-            $display("  - TX Stack direct output: OK");
-            $display("  - Checksum passthrough: OK");
-        end else begin
-            $display("❌ Some tests failed!");
+        if (test_fail != 0) begin
+            $fatal(1, "Day 17 FastPath verification failed with %0d failing tests", test_fail);
         end
 
-        $display("========================================");
-        $display("FastPath Statistics:");
-        $display("  FastPath Count:  %d", fast_path_cnt);
-        $display("  Bypass Count:    %d", bypass_cnt);
-        $display("  Drop Count:      %d", drop_cnt);
-        $display("  Checksum Pass:   %d", checksum_pass_cnt);
-        $display("========================================");
-
-        #1000;
+        $display("[PASS] All Day 17 FastPath tests passed under the current RTL contract");
         $finish;
-    end
-
-    // ========================================================================
-    // Waveform Dump
-    // ========================================================================
-    initial begin
-        $dumpfile("tb_day17_fastpath.vcd");
-        $dumpvars(0, tb_day17_fastpath);
     end
 
 endmodule

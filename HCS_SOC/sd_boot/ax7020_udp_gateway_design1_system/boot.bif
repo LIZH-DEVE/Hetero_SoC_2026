@@ -1,0 +1,6 @@
+the_ROM_image:
+{
+  [bootloader] D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/vitis_2023_udp_gateway_ws_design1/ax7020_udp_gateway_platform_design1/zynq_fsbl/fsbl.elf
+  D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/platform/export/platform/hw/design_1_wrapper.bit
+  D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/ax7020_official_net_test_app/manual_build_design1/ax7020_udp_gateway_design1_app.elf
+}

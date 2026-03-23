@@ -1,0 +1,1 @@
+-debug "typical" -relax -snapshot "tb_dma_subsystem_crypto_encdec_compilecheck_sim" "work.tb_dma_subsystem_crypto_encdec" -log "elaborate.log" 

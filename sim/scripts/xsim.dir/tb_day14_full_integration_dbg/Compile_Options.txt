@@ -1,0 +1,1 @@
+"xil_defaultlib.tb_day14_full_integration" -s "tb_day14_full_integration_dbg" 

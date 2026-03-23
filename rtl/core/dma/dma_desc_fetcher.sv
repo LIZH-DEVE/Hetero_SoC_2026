@@ -6,20 +6,21 @@ module dma_desc_fetcher #(
     input  logic                   clk,
     input  logic                   rst_n,
 
-    // --- CSR 接口 (来自 axil_csr) ---
-    input  logic [31:0]            i_ring_base,   // 环基地址
-    input  logic [31:0]            i_ring_size,   // 环大小
-    input  logic [15:0]            i_sw_tail_ptr, // 软件写的尾指针
-    output logic [15:0]            o_hw_head_ptr, // 硬件维护的头指针
+    // CSR-facing ring configuration.
+    input  logic [31:0]            i_ring_base,
+    input  logic [31:0]            i_ring_size,
+    input  logic                   i_ring_doorbell,
+    input  logic [15:0]            i_sw_tail_ptr,
+    output logic [15:0]            o_hw_head_ptr,
 
-    // --- 控制 DMA 引擎接口 ---
-    output logic                   o_dma_start,   // 启动信号
-    output logic [31:0]            o_dma_addr,    // 解析出的源地址
-    output logic [31:0]            o_dma_len,     // 解析出的长度
-    output logic                   o_dma_algo,    // 解析出的算法位
-    input  logic                   i_dma_done,    // DMA 完成标志
+    // Decoded descriptor output toward the DMA engine.
+    output logic                   o_dma_start,
+    output logic [31:0]            o_dma_addr,
+    output logic [31:0]            o_dma_len,
+    output logic                   o_dma_algo,
+    input  logic                   i_dma_done,
 
-    // --- AXI4 Read Interface (去 DDR 读描述符) ---
+    // AXI read channel for descriptor fetches.
     output logic [ADDR_WIDTH-1:0]  m_axi_araddr,
     output logic [7:0]             m_axi_arlen,
     output logic [2:0]             m_axi_arsize,
@@ -32,125 +33,108 @@ module dma_desc_fetcher #(
     output logic                   m_axi_rready
 );
 
-    // 状态机定义
-    typedef enum logic [3:0] {
-        IDLE,       // 等待指针更新
-        FETCH_REQ,  // 发起读请求
-        FETCH_DAT,  // 接收描述符数据
-        DECODE,     // 解析数据
-        EXEC_WAIT,  // 等待 DMA 搬运完毕
-        UPDATE_HEAD, // 更新 Head 指针
-        HW_INIT     // 硬件初始化：写入空描述符
+    typedef enum logic [2:0] {
+        IDLE,
+        FETCH_REQ,
+        FETCH_DAT,
+        DECODE,
+        EXEC_WAIT,
+        UPDATE_HEAD
     } state_t;
 
-    state_t state, next_state;
+    state_t state;
 
-    // 内部寄存器
     logic [15:0] head_ptr;
+    logic [15:0] next_head_ptr;
     logic [31:0] desc_word0_addr;
     logic [31:0] desc_word1_ctrl;
-    logic [1:0]  fetch_cnt; // 计数器：描述符有 4 个字 (16 Bytes)
-    logic [23:0] init_cnt; // 初始化计数器
-    logic        init_done;     // 初始化完成标志
+    logic [1:0]  fetch_cnt;
+    logic        fetch_active;
 
-    // =========================================================
-    // 状态机逻辑
+    assign next_head_ptr = (i_ring_size == 0 || head_ptr == i_ring_size[15:0] - 1) ? 16'd0 : (head_ptr + 16'd1);
+
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state <= IDLE;
-            head_ptr <= 0;
-            fetch_cnt <= 0;
-            o_dma_start <= 0;
-            desc_word0_addr <= 0;
-            desc_word1_ctrl <= 0;
-            init_cnt <= 0;
-            init_done <= 0;
+            head_ptr <= 16'd0;
+            desc_word0_addr <= 32'd0;
+            desc_word1_ctrl <= 32'd0;
+            fetch_cnt <= 2'd0;
+            fetch_active <= 1'b0;
+            o_dma_start <= 1'b0;
         end else begin
-             case (state)
-                IDLE: begin
-                    // 只要是首次运行且Ring Size不为0，执行HW初始化
-                    if (!init_done && i_ring_size != 0) begin
-                        state <= HW_INIT;
-                    end
-                    // 只要 Head 不等于 Tail，且 Ring Size 不为 0，说明有任务
-                    else if ((head_ptr != i_sw_tail_ptr) && (i_ring_size != 0)) begin
-                        state <= FETCH_REQ;
-                    end
-                end
+            o_dma_start <= 1'b0;
 
-                HW_INIT: begin
-                    if (init_cnt < 24'd24) begin  // 写入24个空描述符
-                        init_cnt <= init_cnt + 1;
-                        // 每个描述符写入零（16字节）
-                        desc_word0_addr <= 32'd0;
-                        desc_word1_ctrl <= 32'd0;
-                    end else begin
-                        init_done <= 1;
-                        init_cnt <= 0;
-                        state <= IDLE;
+            case (state)
+                IDLE: begin
+                    if (i_ring_doorbell) begin
+                        fetch_active <= 1'b1;
+                    end
+
+                    if ((i_ring_doorbell || fetch_active) &&
+                        (i_ring_size != 0) &&
+                        (head_ptr != i_sw_tail_ptr)) begin
+                        fetch_active <= 1'b1;
+                        state <= FETCH_REQ;
+                    end else if (head_ptr == i_sw_tail_ptr) begin
+                        fetch_active <= 1'b0;
                     end
                 end
 
                 FETCH_REQ: begin
                     if (m_axi_arvalid && m_axi_arready) begin
+                        fetch_cnt <= 2'd0;
                         state <= FETCH_DAT;
-                        fetch_cnt <= 0;
                     end
                 end
 
                 FETCH_DAT: begin
                     if (m_axi_rvalid && m_axi_rready) begin
-                        fetch_cnt <= fetch_cnt + 1;
-                        // 抓取第0个字：源地址
-                        if (fetch_cnt == 0) desc_word0_addr <= m_axi_rdata;
-                        // 抓取第1个字：长度 + 算法控制位
-                        if (fetch_cnt == 1) desc_word1_ctrl <= m_axi_rdata;
-                        
-                        if (m_axi_rlast) state <= DECODE;
+                        if (fetch_cnt == 2'd0) desc_word0_addr <= m_axi_rdata;
+                        if (fetch_cnt == 2'd1) desc_word1_ctrl <= m_axi_rdata;
+                        fetch_cnt <= fetch_cnt + 2'd1;
+
+                        if (m_axi_rlast) begin
+                            state <= DECODE;
+                        end
                     end
                 end
 
                 DECODE: begin
-                    o_dma_start <= 1; // 触发 DMA
+                    o_dma_start <= 1'b1;
                     state <= EXEC_WAIT;
                 end
 
                 EXEC_WAIT: begin
-                    o_dma_start <= 0; // 脉冲结束
-                    if (i_dma_done) state <= UPDATE_HEAD;
+                    if (i_dma_done) begin
+                        state <= UPDATE_HEAD;
+                    end
                 end
 
                 UPDATE_HEAD: begin
-                    // 环形回绕逻辑
-                    if (head_ptr == i_ring_size[15:0] - 1) 
-                        head_ptr <= 0;
-                    else 
-                        head_ptr <= head_ptr + 1;
-                    
+                    head_ptr <= next_head_ptr;
+                    if (next_head_ptr == i_sw_tail_ptr) begin
+                        fetch_active <= 1'b0;
+                    end
                     state <= IDLE;
                 end
-                
-                default: state <= IDLE;
+
+                default: begin
+                    state <= IDLE;
+                end
             endcase
         end
     end
 
-    // =========================================================
-    // 输出逻辑
-    // =========================================================
     assign o_hw_head_ptr = head_ptr;
-
-    // 解析描述符内容给 DMA Engine
     assign o_dma_addr = desc_word0_addr;
-    assign o_dma_len  = {8'b0, desc_word1_ctrl[23:0]}; // 低24位是长度
-    assign o_dma_algo = desc_word1_ctrl[31];           // 最高位是算法选择
+    assign o_dma_len  = {8'b0, desc_word1_ctrl[23:0]};
+    assign o_dma_algo = desc_word1_ctrl[31];
 
-    // AXI Read Channel 逻辑
-    // 目标地址 = 环基地址 + (Head指针 * 16字节)
-    assign m_axi_araddr  = i_ring_base + ({16'b0, head_ptr} << 4); 
-    assign m_axi_arlen   = 8'd3;   // 读取 4 个 32-bit (即 16 字节)
-    assign m_axi_arsize  = 3'b010; // 4 Bytes width
-    assign m_axi_arburst = 2'b01;  // INCR
+    assign m_axi_araddr  = i_ring_base + ({16'b0, head_ptr} << 4);
+    assign m_axi_arlen   = 8'd3;
+    assign m_axi_arsize  = 3'b010;
+    assign m_axi_arburst = 2'b01;
     assign m_axi_arvalid = (state == FETCH_REQ);
     assign m_axi_rready  = (state == FETCH_DAT);
 

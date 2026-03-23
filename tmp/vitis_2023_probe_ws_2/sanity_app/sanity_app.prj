@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="ASCII"?>
+<sdkproject:SdkProject xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:sdkproject="http://www.xilinx.com/sdkproject" name="sanity_app" location="D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/tmp/vitis_2023_probe_ws_2/sanity_app" platform="D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/tmp/vitis_2023_probe_ws_2/ax7020_probe_platform/export/ax7020_probe_platform/ax7020_probe_platform.xpfm" platformUID="xilinx:::0.0(custom)" systemProject="sanity_app_system" sysConfig="ax7020_probe_platform" runtime="C/C++" cpu="standalone_domain" cpuInstance="ps7_cortexa9_0" os="standalone" mssSignature="5aa75dede588b1ea37b456d12ed41dbb">
+  <configuration name="Debug" id="xilinx.gnu.armv7.exe.debug.583503357">
+    <configBuildOptions xsi:type="sdkproject:SdkOptions"/>
+  </configuration>
+  <configuration name="Release" id="xilinx.gnu.armv7.exe.release.1421400673">
+    <configBuildOptions xsi:type="sdkproject:SdkOptions"/>
+  </configuration>
+  <template appTemplateName="hello_world"/>
+</sdkproject:SdkProject>

@@ -1,0 +1,1 @@
+-debug "typical" "tb_decrypt_verification" -snapshot "decrypt_verify_snap" -timescale "1ns/1ps" 

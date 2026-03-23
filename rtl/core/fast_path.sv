@@ -2,123 +2,67 @@
 
 /**
  * Module: fast_path
- * Task 16.1: FastPath Rules (Patch)
- * 功能: 零拷贝快速通道
- * 
- * FastPath 规则:
- * 1. Dst_Port != CRYPTO && Dst_Port != CONFIG
- * 2. !drop_flag (未被 ACL 拦截)
- * 3. payload_len 合法
- * 
- * 动作: PBM 直通 TX (Zero-Copy)
- * Checksum: 由于 FastPath 不改 Payload，直接透传原 Checksum
+ * Task 16.1: FastPath Rules
+ *
+ * Current contract:
+ * - Eligible packets are consumed locally and forwarded to TX/PBM.
+ * - Non-eligible packets are classified as bypass/drop and held until the
+ *   external owner of that path takes over and deasserts meta_valid.
  */
 
 module fast_path #(
     parameter AXI_DATA_WIDTH = 32,
-    parameter CRYPTO_PORT   = 16'h1234,  // Crypto 端口
-    parameter CONFIG_PORT   = 16'h4321   // Config 端口
+    parameter CRYPTO_PORT    = 16'h1234,
+    parameter CONFIG_PORT    = 16'h4321
 )(
-    input  logic                   clk,
-    input  logic                   rst_n,
+    input  logic                           clk,
+    input  logic                           rst_n,
 
-    // =========================================================================
-    // RX Path Input (From Parser)
-    // =========================================================================
-    input  logic [AXI_DATA_WIDTH-1:0] s_axis_tdata,
-    input  logic [AXI_DATA_WIDTH/8-1:0]  s_axis_tkeep,
-    input  logic                         s_axis_tlast,
-    input  logic                         s_axis_tvalid,
-    output logic                         s_axis_tready,
+    // RX path input
+    input  logic [AXI_DATA_WIDTH-1:0]      s_axis_tdata,
+    input  logic [AXI_DATA_WIDTH/8-1:0]    s_axis_tkeep,
+    input  logic                           s_axis_tlast,
+    input  logic                           s_axis_tvalid,
+    output logic                           s_axis_tready,
 
-    // =========================================================================
-    // Control Signals
-    // =========================================================================
-    input  logic [15:0]                  dst_port,      // 目标端口
-    input  logic [15:0]                  payload_len,   // Payload 长度
-    input  logic                         drop_flag,      // ACL 拦截标志
-    input  logic                         meta_valid,    // Meta 数据有效
+    // Control signals
+    input  logic [15:0]                    dst_port,
+    input  logic [15:0]                    payload_len,
+    input  logic                           drop_flag,
+    input  logic                           meta_valid,
 
-    // =========================================================================
-    // Checksum Signals (Original Checksums from RX)
-    // =========================================================================
-    input  logic [15:0]                  ip_checksum,    // 原始 IP Checksum
-    input  logic [15:0]                  udp_checksum,  // 原始 UDP Checksum
-    input  logic                         checksum_valid,
+    // Checksum signals
+    input  logic [15:0]                    ip_checksum,
+    input  logic [15:0]                    udp_checksum,
+    input  logic                           checksum_valid,
 
-    // =========================================================================
-    // PBM Interface (Write - from FastPath)
-    // =========================================================================
-    output logic [AXI_DATA_WIDTH-1:0]  pbm_wdata,
-    output logic                        pbm_wvalid,
-    output logic                        pbm_wlast,
-    input  logic                        pbm_ready,
+    // PBM interface
+    output logic [AXI_DATA_WIDTH-1:0]      pbm_wdata,
+    output logic                           pbm_wvalid,
+    output logic                           pbm_wlast,
+    input  logic                           pbm_ready,
 
-    // =========================================================================
-    // TX Path Output (Direct to TX Stack)
-    // =========================================================================
-    output logic [AXI_DATA_WIDTH-1:0]  m_axis_tdata,
-    output logic [AXI_DATA_WIDTH/8-1:0]  m_axis_tkeep,
-    output logic                         m_axis_tlast,
-    output logic                         m_axis_tvalid,
-    input  logic                         m_axis_tready,
+    // TX path output
+    output logic [AXI_DATA_WIDTH-1:0]      m_axis_tdata,
+    output logic [AXI_DATA_WIDTH/8-1:0]    m_axis_tkeep,
+    output logic                           m_axis_tlast,
+    output logic                           m_axis_tvalid,
+    input  logic                           m_axis_tready,
 
-    // =========================================================================
-    // Meta Data Output (To TX Stack)
-    // =========================================================================
-    output logic [15:0]                 meta_out_data,  // Payload Length
-    output logic                        meta_out_valid,
-    output logic [15:0]                 meta_out_checksum, // Original Checksum
-    output logic                        meta_out_checksum_valid,
+    // Meta data output
+    output logic [15:0]                    meta_out_data,
+    output logic                           meta_out_valid,
+    output logic [15:0]                    meta_out_checksum,
+    output logic                           meta_out_checksum_valid,
 
-    // =========================================================================
-    // Status and Statistics
-    // =========================================================================
-    output logic                        fast_path_enable,   // FastPath 是否启用
-    output logic [31:0]                 fast_path_cnt,     // FastPath 计数
-    output logic [31:0]                 bypass_cnt,        // 绕过计数 (到 Crypto)
-    output logic                        drop_cnt,          // 丢弃计数
-    output logic [31:0]                 checksum_pass_cnt  // Checksum 透传计数
+    // Status and statistics
+    output logic                           fast_path_enable,
+    output logic [31:0]                    fast_path_cnt,
+    output logic [31:0]                    bypass_cnt,
+    output logic [31:0]                    drop_cnt,
+    output logic [31:0]                    checksum_pass_cnt
 );
 
-    // =========================================================================
-    // Internal Signals
-    // =========================================================================
-    logic [15:0]                    port_check;
-    logic                           acl_check;
-    logic                           payload_check;
-    logic                           fast_path_condition;
-    logic                           fast_path_active;
-
-    logic                           port_crypto;
-    logic                           port_config;
-
-    // Counters
-    logic [31:0]                    fp_cnt;
-    logic [31:0]                    bp_cnt;
-    logic [31:0]                    dp_cnt;
-    logic [31:0]                    cs_pass_cnt;
-
-    // =========================================================================
-    // FastPath Rule Check Logic
-    // =========================================================================
-    // 规则 1: Dst_Port != CRYPTO && Dst_Port != CONFIG
-    assign port_crypto  = (dst_port == CRYPTO_PORT);
-    assign port_config  = (dst_port == CONFIG_PORT);
-    assign port_check   = (!port_crypto) && (!port_config);
-
-    // 规则 2: !drop_flag (未被 ACL 拦截)
-    assign acl_check    = !drop_flag;
-
-    // 规则 3: payload_len 合法 (16-byte aligned 且 > 0)
-    assign payload_check = (payload_len > 0) && ((payload_len & 16'h000F) == 16'h0000);
-
-    // 综合条件
-    assign fast_path_condition = port_check && acl_check && payload_check && meta_valid;
-
-    // =========================================================================
-    // FastPath State Machine
-    // =========================================================================
     typedef enum logic [1:0] {
         IDLE,
         CHECK_PATH,
@@ -127,6 +71,32 @@ module fast_path #(
     } state_t;
 
     state_t state, state_next;
+
+    logic port_crypto;
+    logic port_config;
+    logic port_check;
+    logic acl_check;
+    logic payload_check;
+    logic fast_path_condition;
+    logic fast_path_active;
+    logic packet_handshake_done;
+    logic aligned_stream_fire;
+
+    logic [31:0] fp_cnt;
+    logic [31:0] bp_cnt;
+    logic [31:0] dp_cnt;
+    logic [31:0] cs_pass_cnt;
+
+    assign port_crypto         = (dst_port == CRYPTO_PORT);
+    assign port_config         = (dst_port == CONFIG_PORT);
+    assign port_check          = !port_crypto && !port_config;
+    assign acl_check           = !drop_flag;
+    assign payload_check       = (payload_len > 0) && ((payload_len & 16'h000F) == 16'h0000);
+    assign fast_path_condition = port_check && acl_check && payload_check && meta_valid;
+    assign fast_path_active    = (state == FAST_PATH_TX);
+    assign fast_path_enable    = fast_path_active;
+    assign aligned_stream_fire = fast_path_active && s_axis_tvalid && m_axis_tready && pbm_ready;
+    assign packet_handshake_done = aligned_stream_fire && s_axis_tlast;
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -141,7 +111,7 @@ module fast_path #(
 
         case (state)
             IDLE: begin
-                if (meta_valid && s_axis_tvalid) begin
+                if (meta_valid) begin
                     state_next = CHECK_PATH;
                 end
             end
@@ -155,13 +125,13 @@ module fast_path #(
             end
 
             FAST_PATH_TX: begin
-                if (s_axis_tlast && s_axis_tvalid) begin
+                if (packet_handshake_done) begin
                     state_next = IDLE;
                 end
             end
 
             BYPASS_CRYPTO: begin
-                if (s_axis_tlast && s_axis_tvalid) begin
+                if (!meta_valid) begin
                     state_next = IDLE;
                 end
             end
@@ -172,43 +142,18 @@ module fast_path #(
         endcase
     end
 
-    assign fast_path_active = (state == FAST_PATH_TX);
-    assign fast_path_enable = fast_path_active;
+    assign pbm_wdata   = s_axis_tdata;
+    assign pbm_wvalid  = aligned_stream_fire;
+    assign pbm_wlast   = aligned_stream_fire && s_axis_tlast;
+    assign m_axis_tdata  = s_axis_tdata;
+    assign m_axis_tkeep  = s_axis_tkeep;
+    assign m_axis_tlast  = aligned_stream_fire && s_axis_tlast;
+    assign m_axis_tvalid = aligned_stream_fire;
 
-    // =========================================================================
-    // PBM Write Interface (Direct passthrough in FastPath mode)
-    // =========================================================================
-    assign pbm_wdata  = s_axis_tdata;
-    assign pbm_wvalid = (state == FAST_PATH_TX) && s_axis_tvalid;
-    assign pbm_wlast  = s_axis_tlast && (state == FAST_PATH_TX);
+    // FastPath only consumes an input beat when both local outputs can accept
+    // it in the same cycle. This keeps TX and PBM beat-for-beat aligned.
+    assign s_axis_tready = fast_path_active && m_axis_tready && pbm_ready;
 
-    // =========================================================================
-    // TX Path Output (Direct passthrough to TX Stack)
-    // =========================================================================
-    always_ff @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            m_axis_tdata  <= {AXI_DATA_WIDTH{1'b0}};
-            m_axis_tkeep  <= {(AXI_DATA_WIDTH/8){1'b0}};
-            m_axis_tlast  <= 1'b0;
-            m_axis_tvalid <= 1'b0;
-        end else begin
-            if (state == FAST_PATH_TX) begin
-                m_axis_tdata  <= s_axis_tdata;
-                m_axis_tkeep  <= s_axis_tkeep;
-                m_axis_tlast  <= s_axis_tlast;
-                m_axis_tvalid <= s_axis_tvalid;
-            end else begin
-                m_axis_tvalid <= 1'b0;
-            end
-        end
-    end
-
-    assign s_axis_tready = (state == FAST_PATH_TX) ? (m_axis_tready && pbm_ready) :
-                           (state == BYPASS_CRYPTO) ? 1'b0 : 1'b1;
-
-    // =========================================================================
-    // Meta Data Output (To TX Stack)
-    // =========================================================================
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             meta_out_data <= 16'd0;
@@ -219,11 +164,10 @@ module fast_path #(
             meta_out_valid <= 1'b0;
             meta_out_checksum_valid <= 1'b0;
 
-            if (state == FAST_PATH_TX && s_axis_tlast && s_axis_tvalid) begin
+            if (fast_path_active && packet_handshake_done) begin
                 meta_out_data <= payload_len;
                 meta_out_valid <= 1'b1;
-                
-                // Checksum 透传: 由于 FastPath 不改 Payload，直接透传原 Checksum
+
                 if (checksum_valid) begin
                     meta_out_checksum <= udp_checksum;
                     meta_out_checksum_valid <= 1'b1;
@@ -232,9 +176,6 @@ module fast_path #(
         end
     end
 
-    // =========================================================================
-    // Counters
-    // =========================================================================
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             fp_cnt <= 32'd0;
@@ -242,34 +183,31 @@ module fast_path #(
             dp_cnt <= 32'd0;
             cs_pass_cnt <= 32'd0;
         end else begin
-            // FastPath counter: increment when packet completes in FAST_PATH_TX
-            if (state == FAST_PATH_TX && s_axis_tlast && s_axis_tvalid) begin
+            if (fast_path_active && packet_handshake_done) begin
                 fp_cnt <= fp_cnt + 1'b1;
             end
 
-            // Bypass counter: increment when packet completes in BYPASS_CRYPTO
-            if (state == BYPASS_CRYPTO && s_axis_tlast && s_axis_tvalid) begin
+            // Non-fast-path results are classification events, not local packet
+            // completions, because this module has no alternate data output.
+            if (state == CHECK_PATH && !fast_path_condition && !drop_flag) begin
                 bp_cnt <= bp_cnt + 1'b1;
             end
 
-            // Drop counter: increment when drop_flag is set during meta_valid
-            if (drop_flag && meta_valid) begin
+            if (state == CHECK_PATH && !fast_path_condition && drop_flag) begin
                 dp_cnt <= dp_cnt + 1'b1;
             end
 
-            // Checksum pass counter: increment when FastPath completes with checksum
-            if (state == FAST_PATH_TX && s_axis_tlast && checksum_valid) begin
+            // Historical name kept for interface compatibility. This counter
+            // tracks checksum passthrough events, not checksum verification.
+            if (fast_path_active && packet_handshake_done && checksum_valid) begin
                 cs_pass_cnt <= cs_pass_cnt + 1'b1;
             end
         end
     end
 
-    // =========================================================================
-    // Output Assignments
-    // =========================================================================
-    assign fast_path_cnt        = fp_cnt;
-    assign bypass_cnt           = bp_cnt;
-    assign drop_cnt             = dp_cnt;
-    assign checksum_pass_cnt    = cs_pass_cnt;
+    assign fast_path_cnt     = fp_cnt;
+    assign bypass_cnt        = bp_cnt;
+    assign drop_cnt          = dp_cnt;
+    assign checksum_pass_cnt = cs_pass_cnt;
 
 endmodule

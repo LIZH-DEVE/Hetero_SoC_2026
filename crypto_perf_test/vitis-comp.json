@@ -1,0 +1,15 @@
+{
+  "name": "crypto_perf_test",
+  "type": "HOST",
+  "platform": "D:\\FPGAhanjia\\Hetero_SoC_2026\\crypto_hw_platform\\export\\crypto_hw_platform\\crypto_hw_platform.xpfm",
+  "domain": "standalone_ps7_cortexa9_0",
+  "cpuInstance": "ps7_cortexa9_0",
+  "cpuType": "cortex-a9",
+  "os": "standalone",
+  "configuration": {
+    "componentType": "HOST",
+    "hostToolchainConfigurations": []
+  },
+  "domainRealName": "standalone_ps7_cortexa9_0",
+  "applicationFlow": "EMBEDDED"
+}

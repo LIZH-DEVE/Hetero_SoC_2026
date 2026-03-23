@@ -1,0 +1,1 @@
+"xil_defaultlib.tb_crypto_bridge_tx_last_sanity" -s "tb_crypto_bridge_tx_last_sanity_dbg" 

@@ -20,19 +20,19 @@
       "targetSetup": {
         "resetSystem": true,
         "programDevice": true,
-        "resetAPU": false,
-        "bitstreamFile": "${workspaceFolder}\\crypto_test_app\\_ide\\bitstream\\system_wrapper.bit",
+        "resetAPU": true,
+        "bitstreamFile": "${workspaceFolder}\\HCS_SOC\\HCS_SOC.runs\\impl_1\\design_1_wrapper.bit",
         "zynqInitialization": {
           "isFsbl": false,
           "usingFSBL": {
             "initWithFSBL": true,
-            "fsblFile": "${workspaceFolder}\\dma_hw_platform\\export\\dma_hw_platform\\sw\\boot\\fsbl.elf",
+            "fsblFile": "${workspaceFolder}\\HCS_SOC\\platform\\export\\platform\\sw\\boot\\fsbl.elf",
             "fsblExitSymbol": "FsblHandoffJtagExit"
           },
           "usingPs7Init": {
             "runPs7Init": true,
             "runPs7PostInit": true,
-            "ps7InitTclFile": "${workspaceFolder}\\crypto_test_app\\_ide\\psinit\\ps7_init.tcl"
+            "ps7InitTclFile": "${workspaceFolder}\\HCS_SOC\\platform\\export\\platform\\hw\\sdt\\ps7_init.tcl"
           }
         },
         "downloadElf": [
