@@ -31,7 +31,7 @@ void dma_ring_init(dma_ring_ctx_t *ctx,
 }
 
 int dma_ring_submit(dma_ring_ctx_t *ctx,
-                    uint32_t src_addr,
+                    uint32_t dst_addr,
                     uint32_t byte_len,
                     uint8_t algo_sel,
                     const void *payload_addr,
@@ -48,10 +48,15 @@ int dma_ring_submit(dma_ring_ctx_t *ctx,
     }
 
     desc = &ctx->ring_base[ctx->sw_tail];
-    desc->src_addr = src_addr;
-    desc->ctrl_len_algo = ((uint32_t)(algo_sel & 0x1u) << 31) | (byte_len & 0x00FFFFFFu);
+    desc->dst_addr = dst_addr;
+    desc->src_addr = 0u;
+    desc->ctrl_len_algo = ((uint32_t)(algo_sel & 0x1u) << DMA_DESC_CTRL_ALGO_BIT) |
+                          (byte_len & DMA_DESC_CTRL_LEN_MASK);
     desc->reserved0 = 0;
+    desc->csw = DMA_DESC_CSW_OWNER;
     desc->reserved1 = 0;
+    desc->reserved2 = 0;
+    desc->reserved3 = 0;
 
     dma_ring_flush_desc_and_payload(desc, payload_addr, payload_len);
 
@@ -68,6 +73,32 @@ int dma_ring_submit(dma_ring_ctx_t *ctx,
     Xil_Out32((UINTPTR)(ctx->csr_base + DMA_CSR_RING_SW_TAIL), ctx->sw_tail);
     DATA_SYNC;
     Xil_Out32((UINTPTR)(ctx->csr_base + DMA_CSR_RING_DOORBELL), 1u);
+
+    return 0;
+}
+
+int dma_ring_poll_csw(volatile dma_ring_desc_t *desc, uint32_t *csw_out)
+{
+    uint32_t csw;
+
+    if (desc == 0) {
+        return -1;
+    }
+
+    csw = desc->csw;
+    if (csw_out != 0) {
+        *csw_out = csw;
+    }
+
+    if ((csw & DMA_DESC_CSW_OWNER) != 0u) {
+        return 1;
+    }
+    if ((csw & DMA_DESC_CSW_DONE) == 0u) {
+        return 1;
+    }
+    if ((csw & DMA_DESC_CSW_ERR) != 0u) {
+        return -2;
+    }
 
     return 0;
 }

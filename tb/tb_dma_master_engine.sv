@@ -14,6 +14,7 @@ module tb_dma_master_engine;
     logic [31:0] i_total_len;
     logic o_done;
     logic o_error;
+    logic [1:0] o_bresp;
 
     logic [DATA_WIDTH-1:0] i_fifo_rdata;
     logic                  i_fifo_empty;
@@ -72,6 +73,7 @@ module tb_dma_master_engine;
         .i_total_len(i_total_len),
         .o_done(o_done),
         .o_error(o_error),
+        .o_bresp(o_bresp),
         .i_fifo_rdata(i_fifo_rdata),
         .i_fifo_empty(i_fifo_empty),
         .o_fifo_ren(o_fifo_ren),

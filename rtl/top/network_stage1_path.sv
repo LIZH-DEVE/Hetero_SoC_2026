@@ -26,6 +26,11 @@ module network_stage1_path (
     input  logic        i_ext_rx_last,
     output logic        o_ext_rx_ready,
 
+    output logic [31:0] o_inject_tdata,
+    output logic        o_inject_tvalid,
+    output logic        o_inject_tlast,
+    input  logic        i_inject_tready,
+
     output logic [31:0] o_tx_axis_tdata,
     output logic        o_tx_axis_tvalid,
     output logic        o_tx_axis_tlast,
@@ -129,11 +134,15 @@ module network_stage1_path (
     assign inj_tdata = inj_data_mem[inj_rd_ptr];
     assign inj_tlast = inj_last_mem[inj_rd_ptr];
 
-    assign ingress_tdata = i_ingress_inject_sel ? inj_tdata : i_ext_rx_data;
-    assign ingress_tvalid = i_ingress_inject_sel ? inj_tvalid : (i_ext_rx_valid && i_network_enable);
-    assign ingress_tlast = i_ingress_inject_sel ? inj_tlast : i_ext_rx_last;
-    assign inj_tready = i_network_enable && i_ingress_inject_sel && ingress_tready;
+    assign ingress_tdata = i_ext_rx_data;
+    assign ingress_tvalid = i_ext_rx_valid && i_network_enable && !i_ingress_inject_sel;
+    assign ingress_tlast = i_ext_rx_last;
+    assign inj_tready = i_network_enable && i_ingress_inject_sel && i_inject_tready;
     assign o_ext_rx_ready = i_network_enable && !i_ingress_inject_sel && ingress_tready;
+
+    assign o_inject_tdata = inj_tdata;
+    assign o_inject_tvalid = i_network_enable && i_ingress_inject_sel && inj_tvalid;
+    assign o_inject_tlast = inj_tlast;
 
     assign o_inj_status = {13'd0, inj_overflow, inj_done, (inj_count != 0), 9'd0, inj_count};
     assign o_txcap_status = {13'd0, txcap_overflow, txcap_done, (txcap_count != 0), 9'd0, txcap_count};

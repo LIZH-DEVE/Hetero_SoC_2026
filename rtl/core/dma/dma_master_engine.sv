@@ -13,6 +13,7 @@ module dma_master_engine #(
     input  logic [31:0]             i_total_len,
     output logic                    o_done,
     output logic                    o_error,
+    output logic [1:0]              o_bresp,
 
     // HP-port baseline: PS software owns coherency. Descriptors/payloads must
     // be flushed before ringing the doorbell, and results invalidated before
@@ -94,12 +95,14 @@ module dma_master_engine #(
             outstanding_writes <= '0;
             o_done <= 1'b0;
             o_error <= 1'b0;
+            o_bresp <= 2'b00;
         end else begin
             state <= next_state;
             o_done <= (next_state == DONE);
 
             if (state == IDLE) begin
                 o_error <= 1'b0;
+                o_bresp <= 2'b00;
             end
 
             if (i_start && addr_unaligned) begin
@@ -113,6 +116,7 @@ module dma_master_engine #(
                 if (outstanding_writes != 0) begin
                     outstanding_writes <= outstanding_writes - 3'd1;
                 end
+                o_bresp <= m_axi_wresp;
                 if (m_axi_wresp != 2'b00) begin
                     o_error <= 1'b1;
                 end

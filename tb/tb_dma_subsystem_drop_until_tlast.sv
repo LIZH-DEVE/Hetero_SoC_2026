@@ -197,6 +197,11 @@ module tb_dma_subsystem_drop_until_tlast;
         rst_n = 1'b1;
         repeat (12) @(posedge clk);
 
+        // This test is specifically about ingress-side packet-boundary drop
+        // behavior. Freeze PBM draining so committed usage directly reflects
+        // packet commit/rollback instead of downstream crypto prefetch.
+        force dut.bridge_rd_pbm = 1'b0;
+
         configure_passthrough();
         tx_axis_tready = 1'b0;
 
@@ -225,6 +230,7 @@ module tb_dma_subsystem_drop_until_tlast;
         end
 
         $display("PASS: dma_subsystem drops full packet until TLAST and recovers next packet");
+        release dut.bridge_rd_pbm;
         $finish;
     end
 

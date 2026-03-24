@@ -1,0 +1,1 @@
+"work.tb_dma_subsystem_drop_until_tlast" -s "tb_dma_subsystem_drop_until_tlast_sim" 

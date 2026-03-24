@@ -2,6 +2,12 @@
 
 module tb_dma_desc_fetcher_doorbell_sanity;
 
+    localparam DESC_STRIDE_BYTES = 32;
+    localparam DESC_CSW_OFFSET   = 16;
+    localparam CTRL_ALGO_BIT     = 31;
+    localparam CSW_OWNER_BIT     = 31;
+    localparam CSW_DONE_BIT      = 30;
+
     logic clk;
     logic rst_n;
     logic [31:0] i_ring_base;
@@ -14,6 +20,8 @@ module tb_dma_desc_fetcher_doorbell_sanity;
     logic [31:0] o_dma_len;
     logic        o_dma_algo;
     logic        i_dma_done;
+    logic        i_dma_error;
+    logic [1:0]  i_dma_bresp;
     logic [31:0] m_axi_araddr;
     logic [7:0]  m_axi_arlen;
     logic [2:0]  m_axi_arsize;
@@ -24,6 +32,23 @@ module tb_dma_desc_fetcher_doorbell_sanity;
     logic        m_axi_rlast;
     logic        m_axi_rvalid;
     logic        m_axi_rready;
+    logic [31:0] m_axi_awaddr;
+    logic [7:0]  m_axi_awlen;
+    logic [2:0]  m_axi_awsize;
+    logic [1:0]  m_axi_awburst;
+    logic [3:0]  m_axi_awcache;
+    logic [2:0]  m_axi_awprot;
+    logic        m_axi_awvalid;
+    logic        m_axi_awready;
+    logic [31:0] m_axi_wdata;
+    logic [3:0]  m_axi_wstrb;
+    logic        m_axi_wlast;
+    logic        m_axi_wvalid;
+    logic        m_axi_wready;
+    logic [1:0]  m_axi_bresp;
+    logic        m_axi_bvalid;
+    logic        m_axi_bready;
+    logic        o_wb_active;
 
     dma_desc_fetcher dut (
         .clk(clk),
@@ -38,6 +63,8 @@ module tb_dma_desc_fetcher_doorbell_sanity;
         .o_dma_len(o_dma_len),
         .o_dma_algo(o_dma_algo),
         .i_dma_done(i_dma_done),
+        .i_dma_error(i_dma_error),
+        .i_dma_bresp(i_dma_bresp),
         .m_axi_araddr(m_axi_araddr),
         .m_axi_arlen(m_axi_arlen),
         .m_axi_arsize(m_axi_arsize),
@@ -47,7 +74,24 @@ module tb_dma_desc_fetcher_doorbell_sanity;
         .m_axi_rdata(m_axi_rdata),
         .m_axi_rlast(m_axi_rlast),
         .m_axi_rvalid(m_axi_rvalid),
-        .m_axi_rready(m_axi_rready)
+        .m_axi_rready(m_axi_rready),
+        .m_axi_awaddr(m_axi_awaddr),
+        .m_axi_awlen(m_axi_awlen),
+        .m_axi_awsize(m_axi_awsize),
+        .m_axi_awburst(m_axi_awburst),
+        .m_axi_awcache(m_axi_awcache),
+        .m_axi_awprot(m_axi_awprot),
+        .m_axi_awvalid(m_axi_awvalid),
+        .m_axi_awready(m_axi_awready),
+        .m_axi_wdata(m_axi_wdata),
+        .m_axi_wstrb(m_axi_wstrb),
+        .m_axi_wlast(m_axi_wlast),
+        .m_axi_wvalid(m_axi_wvalid),
+        .m_axi_wready(m_axi_wready),
+        .m_axi_bresp(m_axi_bresp),
+        .m_axi_bvalid(m_axi_bvalid),
+        .m_axi_bready(m_axi_bready),
+        .o_wb_active(o_wb_active)
     );
 
     initial begin
@@ -70,6 +114,10 @@ module tb_dma_desc_fetcher_doorbell_sanity;
             m_axi_rlast  <= 1'b0;
             do @(posedge clk); while (!m_axi_rready);
 
+            m_axi_rdata  <= 32'hABCD_0001;
+            m_axi_rlast  <= 1'b0;
+            @(posedge clk);
+
             m_axi_rdata  <= desc_ctrl;
             m_axi_rlast  <= 1'b0;
             @(posedge clk);
@@ -78,13 +126,49 @@ module tb_dma_desc_fetcher_doorbell_sanity;
             m_axi_rlast  <= 1'b0;
             @(posedge clk);
 
-            m_axi_rdata  <= 32'hCAFE_BABE;
+            m_axi_rdata  <= (32'h1 << CSW_OWNER_BIT);
             m_axi_rlast  <= 1'b1;
             @(posedge clk);
 
             m_axi_rvalid <= 1'b0;
             m_axi_rlast  <= 1'b0;
             m_axi_rdata  <= 32'd0;
+        end
+    endtask
+
+    task automatic respond_writeback;
+        begin
+            m_axi_awready <= 1'b1;
+            do @(posedge clk); while (!m_axi_awvalid);
+            if (m_axi_awlen !== 8'd0) begin
+                $fatal(1, "write-back must be single word");
+            end
+            if (m_axi_awaddr !== (i_ring_base + DESC_CSW_OFFSET)) begin
+                $fatal(1, "write-back address mismatch: got=%08h", m_axi_awaddr);
+            end
+            @(posedge clk);
+            m_axi_awready <= 1'b0;
+
+            m_axi_wready <= 1'b1;
+            do @(posedge clk); while (!m_axi_wvalid);
+            if (m_axi_wstrb !== 4'hF) begin
+                $fatal(1, "write-back WSTRB mismatch");
+            end
+            if (!m_axi_wlast) begin
+                $fatal(1, "write-back must assert WLAST");
+            end
+            if (m_axi_wdata !== (32'h1 << CSW_DONE_BIT)) begin
+                $fatal(1, "write-back CSW mismatch: got=%08h", m_axi_wdata);
+            end
+            @(posedge clk);
+            m_axi_wready <= 1'b0;
+
+            m_axi_bresp  <= 2'b00;
+            m_axi_bvalid <= 1'b1;
+            do @(posedge clk); while (!m_axi_bready);
+            @(posedge clk);
+            m_axi_bvalid <= 1'b0;
+            m_axi_bresp  <= 2'b00;
         end
     endtask
 
@@ -95,10 +179,16 @@ module tb_dma_desc_fetcher_doorbell_sanity;
         i_ring_doorbell = 1'b0;
         i_sw_tail_ptr = 16'd1;
         i_dma_done = 1'b0;
+        i_dma_error = 1'b0;
+        i_dma_bresp = 2'b00;
         m_axi_arready = 1'b0;
         m_axi_rdata = 32'd0;
         m_axi_rlast = 1'b0;
         m_axi_rvalid = 1'b0;
+        m_axi_awready = 1'b0;
+        m_axi_wready = 1'b0;
+        m_axi_bresp = 2'b00;
+        m_axi_bvalid = 1'b0;
 
         repeat (8) @(posedge clk);
         rst_n = 1'b1;
@@ -128,10 +218,15 @@ module tb_dma_desc_fetcher_doorbell_sanity;
         i_dma_done = 1'b1;
         @(posedge clk);
         i_dma_done = 1'b0;
+
+        respond_writeback();
         repeat (4) @(posedge clk);
 
         if (o_hw_head_ptr !== 16'd1) begin
             $fatal(1, "head pointer did not advance after completed fetch");
+        end
+        if (o_wb_active !== 1'b0) begin
+            $fatal(1, "write-back should quiesce after response");
         end
         if (m_axi_arvalid !== 1'b0) begin
             $fatal(1, "fetcher should quiesce again once head catches tail");

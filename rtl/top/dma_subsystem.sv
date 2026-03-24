@@ -132,6 +132,7 @@ module dma_subsystem #(
     logic [15:0]            sw_tail, hw_head;
     logic                   ring_doorbell;
     logic                   dma_done, dma_error, dma_busy, hw_init;
+    logic [1:0]             dma_status_bresp;
     logic [127:0]           csr_key;
     logic [127:0]           csr_key_hi;
     logic                   csr_aes256_en;
@@ -163,6 +164,11 @@ module dma_subsystem #(
     logic                   network_tx_tvalid, network_tx_tlast;
     logic [3:0]             network_tx_tkeep;
     logic                   network_ext_rx_ready;
+    logic [31:0]            stage1_inject_tdata;
+    logic                   stage1_inject_tvalid;
+    logic                   stage1_inject_tlast;
+    logic                   stage1_inject_tready;
+    logic                   use_stage1_inject;
 
     logic [127:0]           secure_key;
     logic [127:0]           secure_key_hi;
@@ -235,6 +241,17 @@ module dma_subsystem #(
     logic                   dma_awvalid, dma_wvalid, dma_bready;
     logic                   dma_wlast;
     logic [1:0]             dma_bresp;
+    logic [31:0]            fetch_wb_awaddr, fetch_wb_wdata;
+    logic [7:0]             fetch_wb_awlen;
+    logic [2:0]             fetch_wb_awsize;
+    logic [1:0]             fetch_wb_awburst;
+    logic [3:0]             fetch_wb_awcache;
+    logic [2:0]             fetch_wb_awprot;
+    logic [3:0]             fetch_wb_wstrb;
+    logic                   fetch_wb_awvalid, fetch_wb_awready;
+    logic                   fetch_wb_wlast, fetch_wb_wvalid, fetch_wb_wready;
+    logic [1:0]             fetch_wb_bresp;
+    logic                   fetch_wb_bvalid, fetch_wb_bready, fetch_wb_active;
 
     // S2MM/MM2S internal signals
     logic [31:0]            s2mm_awaddr, s2mm_wdata;
@@ -318,17 +335,36 @@ module dma_subsystem #(
     // 3. AXI Master Interface Connections
     // =========================================================================
     // DMA Engine Write Channel (Normal mode only)
-    assign m_axis_awaddr = (loopback_mode == 2'b00) ? dma_awaddr : 32'b0;
-    assign m_axis_awlen = (loopback_mode == 2'b00) ? dma_awlen : 8'b0;
-    assign m_axis_awsize = (loopback_mode == 2'b00) ? dma_awsize : 3'b010;
-    assign m_axis_awburst = (loopback_mode == 2'b00) ? dma_awburst : 2'b01;
-    assign m_axis_awcache = (loopback_mode == 2'b00) ? dma_awcache : 4'b0011;
-    assign m_axis_awprot = (loopback_mode == 2'b00) ? dma_awprot : 3'b000;
-    assign m_axis_wdata = (loopback_mode == 2'b00) ? dma_wdata : 32'b0;
-    assign m_axis_wstrb = (loopback_mode == 2'b00) ? dma_wstrb : 4'hF;
-    assign m_axis_wlast = (loopback_mode == 2'b00) ? dma_wlast : 1'b1;
-    assign m_axis_wvalid = (loopback_mode == 2'b00) ? dma_wvalid : 1'b0;
-    assign m_axis_awvalid = (loopback_mode == 2'b00) ? dma_awvalid : 1'b0;
+    assign m_axis_awaddr = (loopback_mode == 2'b00) ?
+                           (fetch_wb_active ? fetch_wb_awaddr : dma_awaddr) : 32'b0;
+    assign m_axis_awlen = (loopback_mode == 2'b00) ?
+                          (fetch_wb_active ? fetch_wb_awlen : dma_awlen) : 8'b0;
+    assign m_axis_awsize = (loopback_mode == 2'b00) ?
+                           (fetch_wb_active ? fetch_wb_awsize : dma_awsize) : 3'b010;
+    assign m_axis_awburst = (loopback_mode == 2'b00) ?
+                            (fetch_wb_active ? fetch_wb_awburst : dma_awburst) : 2'b01;
+    assign m_axis_awcache = (loopback_mode == 2'b00) ?
+                            (fetch_wb_active ? fetch_wb_awcache : dma_awcache) : 4'b0011;
+    assign m_axis_awprot = (loopback_mode == 2'b00) ?
+                           (fetch_wb_active ? fetch_wb_awprot : dma_awprot) : 3'b000;
+    assign m_axis_wdata = (loopback_mode == 2'b00) ?
+                          (fetch_wb_active ? fetch_wb_wdata : dma_wdata) : 32'b0;
+    assign m_axis_wstrb = (loopback_mode == 2'b00) ?
+                          (fetch_wb_active ? fetch_wb_wstrb : dma_wstrb) : 4'hF;
+    assign m_axis_wlast = (loopback_mode == 2'b00) ?
+                          (fetch_wb_active ? fetch_wb_wlast : dma_wlast) : 1'b1;
+    assign m_axis_wvalid = (loopback_mode == 2'b00) ?
+                           (fetch_wb_active ? fetch_wb_wvalid : dma_wvalid) : 1'b0;
+    assign m_axis_awvalid = (loopback_mode == 2'b00) ?
+                            (fetch_wb_active ? fetch_wb_awvalid : dma_awvalid) : 1'b0;
+    assign m_axis_bready = (loopback_mode == 2'b00) ?
+                           (fetch_wb_active ? fetch_wb_bready : dma_bready) : 1'b0;
+
+    assign fetch_wb_awready = ((loopback_mode == 2'b00) && fetch_wb_active) ? m_axis_awready : 1'b0;
+    assign fetch_wb_wready  = ((loopback_mode == 2'b00) && fetch_wb_active) ? m_axis_wready : 1'b0;
+    assign fetch_wb_bresp   = ((loopback_mode == 2'b00) && fetch_wb_active) ? m_axis_bresp : 2'b00;
+    assign fetch_wb_bvalid  = ((loopback_mode == 2'b00) && fetch_wb_active) ? m_axis_bvalid : 1'b0;
+    assign dma_bresp        = ((loopback_mode == 2'b00) && !fetch_wb_active) ? m_axis_bresp : 2'b00;
 
     // S2MM/MM2S Write Channel
     assign m_axis_s2mm_awaddr = s2mm_awaddr;
@@ -404,6 +440,7 @@ module dma_subsystem #(
     assign net_applied_local_ip = stage1_local_ip;
     assign net_applied_local_mac_lo = stage1_local_mac_lo;
     assign net_applied_local_mac_hi = stage1_local_mac_hi;
+    assign use_stage1_inject = stage1_network_enable && stage1_ingress_inject_sel;
 
     // CSR (Control and Status Registers)
     axil_csr #(.ADDR_WIDTH(ADDR_WIDTH), .DATA_WIDTH(DATA_WIDTH)) u_csr (
@@ -473,6 +510,10 @@ module dma_subsystem #(
         .i_ext_rx_data(rx_wr_data),
         .i_ext_rx_last(rx_wr_last),
         .o_ext_rx_ready(network_ext_rx_ready),
+        .o_inject_tdata(stage1_inject_tdata),
+        .o_inject_tvalid(stage1_inject_tvalid),
+        .o_inject_tlast(stage1_inject_tlast),
+        .i_inject_tready(stage1_inject_tready),
         .o_tx_axis_tdata(network_tx_tdata),
         .o_tx_axis_tvalid(network_tx_tvalid),
         .o_tx_axis_tlast(network_tx_tlast),
@@ -508,12 +549,21 @@ module dma_subsystem #(
         .i_sw_tail_ptr(sw_tail), .o_hw_head_ptr(hw_head),
         .o_dma_start(fetcher_start), .o_dma_addr(fetcher_addr),
         .o_dma_len(fetcher_len), .o_dma_algo(fetcher_algo),
-        .i_dma_done(dma_done),
+        .i_dma_done(dma_done), .i_dma_error(dma_error), .i_dma_bresp(dma_status_bresp),
         .m_axi_araddr(m_axis_fetcher_araddr), .m_axi_arlen(m_axis_fetcher_arlen),
         .m_axi_arsize(m_axis_fetcher_arsize), .m_axi_arburst(m_axis_fetcher_arburst),
         .m_axi_arvalid(m_axis_fetcher_arvalid), .m_axi_arready(m_axis_fetcher_arready),
         .m_axi_rdata(m_axis_fetcher_rdata), .m_axi_rlast(m_axis_fetcher_rlast),
-        .m_axi_rvalid(m_axis_fetcher_rvalid), .m_axi_rready(m_axis_fetcher_rready)
+        .m_axi_rvalid(m_axis_fetcher_rvalid), .m_axi_rready(m_axis_fetcher_rready),
+        .m_axi_awaddr(fetch_wb_awaddr), .m_axi_awlen(fetch_wb_awlen),
+        .m_axi_awsize(fetch_wb_awsize), .m_axi_awburst(fetch_wb_awburst),
+        .m_axi_awcache(fetch_wb_awcache), .m_axi_awprot(fetch_wb_awprot),
+        .m_axi_awvalid(fetch_wb_awvalid), .m_axi_awready(fetch_wb_awready),
+        .m_axi_wdata(fetch_wb_wdata), .m_axi_wstrb(fetch_wb_wstrb),
+        .m_axi_wlast(fetch_wb_wlast), .m_axi_wvalid(fetch_wb_wvalid),
+        .m_axi_wready(fetch_wb_wready), .m_axi_bresp(fetch_wb_bresp),
+        .m_axi_bvalid(fetch_wb_bvalid), .m_axi_bready(fetch_wb_bready),
+        .o_wb_active(fetch_wb_active)
     );
 
     // Key vault: when DNA lock enabled, use DNA-bound key.
@@ -627,9 +677,13 @@ assign secure_key       = dna_lock_en ? effective_key : csr_key;
         end
     end
 
-    assign ingress_tdata  = auth_en ? auth_acl_tdata  : rx_wr_data;
-    assign ingress_tlast  = auth_en ? auth_acl_tlast  : rx_wr_last;
-    assign ingress_tvalid = auth_en ? auth_acl_tvalid : (rx_wr_valid && !stage1_network_enable);
+    assign ingress_tdata  = use_stage1_inject ? stage1_inject_tdata :
+                            (auth_en ? auth_acl_tdata : rx_wr_data);
+    assign ingress_tlast  = use_stage1_inject ? stage1_inject_tlast :
+                            (auth_en ? auth_acl_tlast : rx_wr_last);
+    assign ingress_tvalid = use_stage1_inject ? stage1_inject_tvalid :
+                            (auth_en ? auth_acl_tvalid : (rx_wr_valid && !stage1_network_enable));
+    assign stage1_inject_tready = use_stage1_inject ? ingress_tready : 1'b0;
     assign rx_wr_ready    = stage1_network_enable ? network_ext_rx_ready : (auth_en ? auth_tready : ingress_tready);
 
     // Once PBM hits high-water in the middle of a frame, mark the rest of the
@@ -710,17 +764,18 @@ assign secure_key       = dna_lock_en ? effective_key : csr_key;
         .i_total_len(final_len),
         .o_done(dma_done),
         .o_error(dma_error),
+        .o_bresp(dma_status_bresp),
         .i_fifo_rdata(muxed_crypto_data),
         .i_fifo_empty(muxed_crypto_empty),
         .o_fifo_ren(dma_req_rd),
         .m_axi_awaddr(dma_awaddr), .m_axi_awlen(dma_awlen),
         .m_axi_awsize(dma_awsize), .m_axi_awburst(dma_awburst),
         .m_axi_awcache(dma_awcache), .m_axi_awprot(dma_awprot),
-        .m_axi_awvalid(dma_awvalid), .m_axi_awready(m_axis_awready),
+        .m_axi_awvalid(dma_awvalid), .m_axi_awready(fetch_wb_active ? 1'b0 : m_axis_awready),
         .m_axi_wdata(dma_wdata), .m_axi_wstrb(dma_wstrb),
         .m_axi_wlast(dma_wlast), .m_axi_wvalid(dma_wvalid),
-        .m_axi_wready(m_axis_wready), .m_axi_wresp(2'b00), .m_axi_blast(1'b0),
-        .m_axi_bvalid(m_axis_bvalid), .m_axi_bready(m_axis_bready),
+        .m_axi_wready(fetch_wb_active ? 1'b0 : m_axis_wready), .m_axi_wresp(dma_bresp), .m_axi_blast(1'b0),
+        .m_axi_bvalid(fetch_wb_active ? 1'b0 : m_axis_bvalid), .m_axi_bready(dma_bready),
         .m_axi_araddr(), .m_axi_arlen(), .m_axi_arsize(),
         .m_axi_arburst(), .m_axi_arvalid(), .m_axi_arready(1'b0),
         .m_axi_rdata(32'b0), .m_axi_rresp(2'b00), .m_axi_rlast(1'b0),

@@ -1,0 +1,1 @@
+"work.tb_dma_subsystem_ps_bfm_system" -s "tb_dma_subsystem_ps_bfm_system_sim" 

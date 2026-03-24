@@ -1,0 +1,1 @@
+"work.tb_dma_subsystem_ps_csr_inject_smoke" -s "tb_dma_subsystem_ps_csr_inject_smoke_sim" 
