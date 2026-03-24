@@ -35,3 +35,7 @@
 !*.py
 !*.md
 !*.hex
+!HCS_SOC/sd_boot/ax7020_vendor_ps_hello_baseline/BOOT.BIN
+!HCS_SOC/sd_boot/ax7020_vendor_ps_uart_baseline/BOOT.BIN
+!HCS_SOC/sd_boot/ax7020_repo_design1_uart_baseline/BOOT.BIN
+!HCS_SOC/sd_boot/ax7020_dma_mvp_smoke_system/BOOT.BIN

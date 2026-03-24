@@ -1,18 +1,15 @@
 [CmdletBinding()]
 param(
-    [string]$VitisRoot = "D:\Xilinx\Vitis\2023.1",
-    [string]$PlatformSwDir = ""
+    [string]$VitisRoot = "D:\Xilinx\Vitis\2023.1"
 )
 
 $ErrorActionPreference = "Stop"
 
 $workspace = Split-Path -Parent $MyInvocation.MyCommand.Path
-$appSrcDir = Join-Path $workspace "ax7020_dma_mvp_smoke_app\src"
-$buildDir = Join-Path $workspace "ax7020_dma_mvp_smoke_app\build"
+$appSrcDir = Join-Path $workspace "ax7020_dma_mvp_diag_app\src"
+$buildDir = Join-Path $workspace "ax7020_dma_mvp_diag_app\build"
 $objDir = Join-Path $buildDir "obj"
-if ([string]::IsNullOrWhiteSpace($PlatformSwDir)) {
-    $PlatformSwDir = Join-Path $workspace "platform\export\platform\sw\standalone_ps7_cortexa9_0"
-}
+$platformSwDir = Join-Path $workspace "platform\export\platform\sw\standalone_ps7_cortexa9_0"
 $includeDir = Join-Path $platformSwDir "include"
 $libDir = Join-Path $platformSwDir "lib"
 $specsFile = Join-Path $platformSwDir "Xilinx.spec"
@@ -61,12 +58,12 @@ $commonArgs = @(
 
 $mainObj = Join-Path $objDir "main.o"
 $driverObj = Join-Path $objDir "dma_mvp_ps_driver_ref.o"
-$elfPath = Join-Path $buildDir "ax7020_dma_mvp_smoke_app.elf"
-$mapPath = Join-Path $buildDir "ax7020_dma_mvp_smoke_app.map"
+$elfPath = Join-Path $buildDir "ax7020_dma_mvp_diag_app.elf"
+$mapPath = Join-Path $buildDir "ax7020_dma_mvp_diag_app.map"
 
 & $gcc @commonArgs -c $mainSource -o $mainObj
 if ($LASTEXITCODE -ne 0) {
-    throw "Compile failed for main.c"
+    throw "Compile failed for diag main.c"
 }
 
 & $gcc @commonArgs -c $driverSource -o $driverObj
@@ -100,12 +97,12 @@ $linkArgs = @(
 
 & $gcc @linkArgs
 if ($LASTEXITCODE -ne 0) {
-    throw "Link failed for DMA smoke app"
+    throw "Link failed for DMA diag app"
 }
 
 if (Test-Path $size) {
     & $size $elfPath
 }
 
-Write-Host "Built DMA smoke app ELF:"
+Write-Host "Built DMA diag app ELF:"
 Write-Host $elfPath
