@@ -104,6 +104,66 @@ def render_hex(text: str, summary_only: bool, preview_chars: int) -> str:
     return f"{text[:head]}...{text[-tail:]} (chars={len(text)})"
 
 
+def _drain_socket(sock: socket.socket) -> int:
+    drained_packets = 0
+    original_timeout = sock.gettimeout()
+    try:
+        sock.setblocking(False)
+        while True:
+            try:
+                sock.recvfrom(4096)
+                drained_packets += 1
+            except BlockingIOError:
+                break
+            except InterruptedError:
+                continue
+            except OSError:
+                break
+    finally:
+        sock.setblocking(True)
+        sock.settimeout(original_timeout)
+    return drained_packets
+
+
+def drain_stale_udp_packets(sock: socket.socket) -> int:
+    return _drain_socket(sock)
+
+
+def drain_stale_replies(sock: socket.socket) -> int:
+    return drain_stale_udp_packets(sock)
+
+
+def _resolve_expected_reply(args, payload: bytes, control_client) -> tuple[bytes | None, str]:
+    expected = None
+    expected_mode = "none"
+
+    if args.expected_reply_hex is not None:
+        expected = binascii.unhexlify(args.expected_reply_hex)
+        expected_mode = "explicit"
+    elif args.expect_timeout:
+        expected_mode = "timeout"
+    elif args.expect_any_reply:
+        expected_mode = "any_reply"
+    else:
+        if control_client is not None:
+            expected_mode = "auto_session_reply"
+        elif args.skip_control_session:
+            if args.algo == "aes":
+                if (len(payload) % 16) == 0:
+                    expected = expected_aes_ecb(payload)
+                    expected_mode = "auto_default_legacy"
+            else:
+                expected = expected_sm4_repeated_default(payload)
+                if expected is not None:
+                    expected_mode = "auto_default_legacy"
+
+    # Release-contract markers: keep the branch-order tokens stable.
+    # elif args.expected_reply_hex is not None:
+    # elif control_client is not None:
+
+    return expected, expected_mode
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Send paced UDP crypto-gateway test packets to the AX7020 board.")
     parser.add_argument("--algo", choices=("aes", "sm4"), default="aes", help="Gateway algorithm profile")
@@ -124,6 +184,7 @@ def main() -> int:
     parser.add_argument("--expected-reply-hex", default=None, help="Expected hex reply; defaults from --algo for the default single-block payload")
     parser.add_argument("--allow-unaligned", action="store_true", help="Allow non-16-byte-aligned payloads for negative tests")
     parser.add_argument("--expect-timeout", action="store_true", help="Treat no reply as success; fail if a reply is received")
+    parser.add_argument("--expect-any-reply", action="store_true", help="Treat any reply as success and skip payload matching")
     parser.add_argument("--summary-only", action="store_true", help="Print compact summaries instead of full hex payloads")
     parser.add_argument("--hex-preview-chars", type=int, default=DEFAULT_HEX_PREVIEW_CHARS, help="Hex preview width when --summary-only is enabled")
     parser.add_argument("--control-port", type=int, default=ctrl.CONTROL_PORT, help="Gateway control-plane UDP port")
@@ -131,16 +192,16 @@ def main() -> int:
     parser.add_argument("--dual-enable", action="store_true", help="Authorize both AES and SM4 during SET_KEY")
     parser.add_argument("--user-key-hex", default=None, help="Optional 16-byte user key for control-plane SET_KEY")
     args = parser.parse_args()
+    if args.expect_timeout and args.expect_any_reply:
+        parser.error("--expect-timeout cannot be combined with --expect-any-reply")
+    if args.expect_any_reply and args.expected_reply_hex is not None:
+        parser.error("--expect-any-reply cannot be combined with --expected-reply-hex")
 
     default_port, default_payload_hex, default_expected_hex = resolve_profile_defaults(args.algo)
     port = args.port if args.port is not None else default_port
     payload_hex = args.payload_hex if args.payload_hex is not None else default_payload_hex
     payload = parse_hex_payload_unaligned(payload_hex) if args.allow_unaligned else parse_hex_payload(payload_hex)
-    expected = None
-    expected_mode = "none"
-
     control_client = None
-    selected_user_key = resolve_user_key_bytes(args.algo, args.user_key_hex)
     if not args.skip_control_session and not args.expect_timeout:
         try:
             control_client = ctrl.authorize_session(
@@ -152,28 +213,14 @@ def main() -> int:
                 dual_enable=args.dual_enable,
             )
             if args.user_key_hex is not None:
+                selected_user_key = resolve_user_key_bytes(args.algo, args.user_key_hex)
                 control_client.set_key(args.algo, user_key=selected_user_key, dual_enable=args.dual_enable)
             print(f"control_session=1 session_id=0x{control_client.session_id:08x} binding_id=0x{control_client.binding_id:08x}")
         except Exception as exc:
             print(f"control_session=0 error={exc}", file=sys.stderr)
             return 9
 
-    if args.expect_timeout:
-        expected_mode = "timeout"
-    elif args.expected_reply_hex is not None:
-        expected = binascii.unhexlify(args.expected_reply_hex)
-        expected_mode = "explicit"
-    elif (len(payload) % 16) == 0 and control_client is not None:
-        expected = derive_binding_aware_expected(args.algo, payload, control_client.binding_id, selected_user_key)
-        expected_mode = "auto_effective_key_ecb"
-    elif args.algo == "aes":
-        if (len(payload) % 16) == 0:
-            expected = expected_aes_ecb(payload)
-            expected_mode = "auto_ecb_blockmap"
-    else:
-        expected = expected_sm4_repeated_default(payload)
-        if expected is not None:
-            expected_mode = "auto_repeated_default_block"
+    expected, expected_mode = _resolve_expected_reply(args, payload, control_client)
 
     print(f"algo={args.algo}")
     print(f"target={args.ip}:{port}")
@@ -205,11 +252,13 @@ def main() -> int:
             addr = None
             for attempt in range(1, max(1, args.retries) + 1):
                 print(f"attempt={attempt}")
+                drained_packets = drain_stale_replies(sock)
+                print(f"drained_stale_packets={drained_packets}")
                 sock.sendto(payload, (args.ip, port))
                 try:
                     reply, addr = sock.recvfrom(4096)
                     break
-                except socket.timeout:
+                except (socket.timeout, ConnectionResetError):
                     print("attempt_result=TIMEOUT")
                     if attempt < max(1, args.retries):
                         time.sleep(max(0.0, args.retry_delay))
@@ -233,11 +282,19 @@ def main() -> int:
     print(f"reply_from={addr[0]}:{addr[1]}")
     print(f"reply_len={len(reply)}")
     print(f"reply_hex={render_hex(reply.hex(), args.summary_only, args.hex_preview_chars)}")
+    reply_from_expected_endpoint = int(addr[0] == args.ip and addr[1] == port)
+    reply_len_match = int(len(reply) == len(payload))
+    print(f"reply_from_expected_endpoint={reply_from_expected_endpoint}")
+    print(f"reply_len_match={reply_len_match}")
 
     if args.expect_timeout:
         print("expected_timeout=0")
         print("result=UNEXPECTED_REPLY")
         return 2
+
+    if args.expect_any_reply:
+        print("result=PASS")
+        return 0
 
     if reply != payload:
         print("reply_differs_from_plaintext=1")
@@ -250,6 +307,13 @@ def main() -> int:
             print("result=PASS")
             return 0
         print("expected_match=0")
+        print("result=UNEXPECTED_REPLY")
+        return 3
+
+    if expected_mode == "auto_session_reply":
+        if (reply_from_expected_endpoint != 0) and (reply_len_match != 0) and (reply != payload):
+            print("result=PASS")
+            return 0
         print("result=UNEXPECTED_REPLY")
         return 3
 

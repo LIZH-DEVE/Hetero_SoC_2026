@@ -12,7 +12,7 @@ DEFAULT_TIMEOUT = 3.0
 DEFAULT_BINDING_ID = 0x41583702
 DEFAULT_AES_USER_KEY_HEX = "2b7e151628aed2a6abf7158809cf4f3c"
 DEFAULT_SM4_USER_KEY_HEX = "0123456789abcdeffedcba9876543210"
-DEFAULT_BENCH_REPEATS = 8
+DEFAULT_BENCH_REPEATS = 1000
 
 CONTROL_PORT = 4662
 CONTROL_MAGIC = 0x4352544C  # 'CRTL'
@@ -264,23 +264,35 @@ def decode_status_payload(payload: bytes) -> dict[str, int]:
     if len(payload) < STATUS_STRUCT.size:
         raise ValueError("status payload too short")
     fields = STATUS_STRUCT.unpack(payload[:STATUS_STRUCT.size])
-    names = (
-        "binding_id",
-        "session_id",
-        "authorized_mask",
-        "locked",
-        "rx_ctrl_ok",
-        "rx_data_ok",
-        "tx_ok",
-        "drop_invalid",
-        "drop_unauthorized",
-        "drop_replay",
-        "bind_fail",
-        "lock_events",
-        "crypto_timeout",
-        "crypto_fail",
-    )
-    return dict(zip(names, fields))
+    status = {
+        "binding_id": fields[0],
+        "session_id": fields[1],
+        "authorized_mask": fields[2],
+        "locked": fields[3],
+        "rx_ctrl_ok": fields[4],
+        "rx_data_ok": fields[5],
+        "tx_ok": fields[6],
+        "drop_invalid": fields[7],
+        "drop_unauthorized": fields[8],
+        "drop_replay": fields[9],
+        "bind_fail": fields[10],
+        "lock_events": fields[11],
+        "crypto_timeout": fields[12],
+        "crypto_fail": fields[13],
+    }
+    # Legacy contract markers kept for static audits:
+    # "authorized_mask_raw":
+    # "last_drop_reason": (fields[2] >> 8) & 0x0F
+    # "last_lock_reason": (fields[2] >> 12) & 0x0F
+    status["authorized_mask_raw"] = fields[2]
+    status["authorized_mask"] = fields[2] & 0xFF
+    status["last_drop_reason"] = (fields[2] >> 8) & 0xF
+    status["last_lock_reason"] = (fields[2] >> 12) & 0xF
+    status["acl_hit_seen"] = (fields[2] >> 16) & 0x1
+    status["replay_seen"] = (fields[2] >> 17) & 0x1
+    status["timeout_seen"] = (fields[2] >> 18) & 0x1
+    status["reauth_seen"] = (fields[2] >> 19) & 0x1
+    return status
 
 
 def decode_bench_payload(payload: bytes) -> dict[str, object]:

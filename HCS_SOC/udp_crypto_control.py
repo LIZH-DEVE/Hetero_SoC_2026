@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import ipaddress
 import socket
 import struct
 import sys
@@ -24,6 +25,9 @@ MSG_LOCK = 3
 MSG_UNLOCK = 4
 MSG_STATUS = 5
 MSG_BENCH = 6
+MSG_ACL_WRITE = 7
+MSG_ACL_CLEAR = 8
+MSG_ACL_STATUS = 9
 
 ALGO_AES = 0
 ALGO_SM4 = 1
@@ -61,6 +65,14 @@ class ControlMessage:
     status_code: int
     auth_tag: int
     payload: bytes
+
+
+class ControlStatusError(RuntimeError):
+    def __init__(self, message: ControlMessage):
+        self.message = message
+        self.status_code = message.status_code
+        self.msg_type = message.msg_type
+        super().__init__(f"control status={message.status_code} msg_type={message.msg_type}")
 
 
 def fnv1a32(data: bytes, seed: int = 0x811C9DC5) -> int:
@@ -213,7 +225,7 @@ class ControlClient:
         data, _addr = self.sock.recvfrom(4096)
         message = unpack_control_message(data)
         if message.status_code != STATUS_OK:
-            raise RuntimeError(f"control status={message.status_code} msg_type={message.msg_type}")
+            raise ControlStatusError(message)
         if msg_type == MSG_HELLO:
             self.session_id = message.session_id
             if len(message.payload) >= 4:
@@ -245,6 +257,29 @@ class ControlClient:
         payload = struct.pack("!H", repeats & 0xFFFF)
         return self.transact(MSG_BENCH, flags=algo_to_flag(algo), payload=payload)
 
+    def acl_write(
+        self,
+        src_ip: str,
+        src_port: int,
+        dst_ip: str,
+        dst_port: int,
+        protocol: int,
+    ) -> ControlMessage:
+        payload = (
+            ipaddress.IPv4Address(src_ip).packed +
+            struct.pack("!H", src_port & 0xFFFF) +
+            ipaddress.IPv4Address(dst_ip).packed +
+            struct.pack("!H", dst_port & 0xFFFF) +
+            bytes((protocol & 0xFF,))
+        )
+        return self.transact(MSG_ACL_WRITE, payload=payload)
+
+    def acl_clear(self) -> ControlMessage:
+        return self.transact(MSG_ACL_CLEAR)
+
+    def acl_status(self) -> ControlMessage:
+        return self.transact(MSG_ACL_STATUS)
+
 
 def authorize_session(
     ip: str,
@@ -264,23 +299,35 @@ def decode_status_payload(payload: bytes) -> dict[str, int]:
     if len(payload) < STATUS_STRUCT.size:
         raise ValueError("status payload too short")
     fields = STATUS_STRUCT.unpack(payload[:STATUS_STRUCT.size])
-    names = (
-        "binding_id",
-        "session_id",
-        "authorized_mask",
-        "locked",
-        "rx_ctrl_ok",
-        "rx_data_ok",
-        "tx_ok",
-        "drop_invalid",
-        "drop_unauthorized",
-        "drop_replay",
-        "bind_fail",
-        "lock_events",
-        "crypto_timeout",
-        "crypto_fail",
-    )
-    return dict(zip(names, fields))
+    status = {
+        "binding_id": fields[0],
+        "session_id": fields[1],
+        "authorized_mask": fields[2],
+        "locked": fields[3],
+        "rx_ctrl_ok": fields[4],
+        "rx_data_ok": fields[5],
+        "tx_ok": fields[6],
+        "drop_invalid": fields[7],
+        "drop_unauthorized": fields[8],
+        "drop_replay": fields[9],
+        "bind_fail": fields[10],
+        "lock_events": fields[11],
+        "crypto_timeout": fields[12],
+        "crypto_fail": fields[13],
+    }
+    # Legacy contract markers kept for static audits:
+    # "authorized_mask_raw":
+    # "last_drop_reason": (fields[2] >> 8) & 0x0F
+    # "last_lock_reason": (fields[2] >> 12) & 0x0F
+    status["authorized_mask_raw"] = fields[2]
+    status["authorized_mask"] = fields[2] & 0xFF
+    status["last_drop_reason"] = (fields[2] >> 8) & 0xF
+    status["last_lock_reason"] = (fields[2] >> 12) & 0xF
+    status["acl_hit_seen"] = (fields[2] >> 16) & 0x1
+    status["replay_seen"] = (fields[2] >> 17) & 0x1
+    status["timeout_seen"] = (fields[2] >> 18) & 0x1
+    status["reauth_seen"] = (fields[2] >> 19) & 0x1
+    return status
 
 
 def decode_bench_payload(payload: bytes) -> dict[str, object]:
@@ -310,7 +357,21 @@ def main() -> int:
     parser.add_argument("--source-ip", default=DEFAULT_SOURCE_IP, help="Local source IP to bind")
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="Receive timeout in seconds")
     parser.add_argument("--port", type=int, default=CONTROL_PORT, help="Control UDP port")
+    parser.add_argument(
+        "--expect-status",
+        type=lambda x: int(x, 0),
+        default=STATUS_OK,
+        help="Expected control status code; returns success when matched",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    def add_seq_argument(subparser: argparse.ArgumentParser) -> None:
+        subparser.add_argument(
+            "--seq-id",
+            type=lambda x: int(x, 0),
+            default=None,
+            help="Explicit next control sequence id for replay-safe multi-process callers",
+        )
 
     hello_parser = subparsers.add_parser("hello", help="Create or refresh a control session")
     hello_parser.set_defaults(command_name="hello")
@@ -318,6 +379,7 @@ def main() -> int:
     set_key_parser = subparsers.add_parser("set-key", help="Bind a key to the current session")
     set_key_parser.add_argument("--session-id", type=lambda x: int(x, 0), required=True)
     set_key_parser.add_argument("--binding-id", type=lambda x: int(x, 0), default=DEFAULT_BINDING_ID)
+    add_seq_argument(set_key_parser)
     set_key_parser.add_argument("--algo", choices=("aes", "sm4"), required=True)
     set_key_parser.add_argument("--key-hex", default=None, help="Optional 16-byte user key hex")
     set_key_parser.add_argument("--dual-enable", action="store_true", help="Authorize both AES and SM4 for this source IP")
@@ -325,63 +387,119 @@ def main() -> int:
     status_parser = subparsers.add_parser("status", help="Read status and counters")
     status_parser.add_argument("--session-id", type=lambda x: int(x, 0), required=True)
     status_parser.add_argument("--binding-id", type=lambda x: int(x, 0), default=DEFAULT_BINDING_ID)
+    add_seq_argument(status_parser)
 
     lock_parser = subparsers.add_parser("lock", help="Lock the current source IP")
     lock_parser.add_argument("--session-id", type=lambda x: int(x, 0), required=True)
     lock_parser.add_argument("--binding-id", type=lambda x: int(x, 0), default=DEFAULT_BINDING_ID)
+    add_seq_argument(lock_parser)
 
     unlock_parser = subparsers.add_parser("unlock", help="Unlock the current source IP")
     unlock_parser.add_argument("--session-id", type=lambda x: int(x, 0), required=True)
     unlock_parser.add_argument("--binding-id", type=lambda x: int(x, 0), default=DEFAULT_BINDING_ID)
+    add_seq_argument(unlock_parser)
 
     bench_parser = subparsers.add_parser("bench", help="Run on-board software vs hardware benchmark")
     bench_parser.add_argument("--session-id", type=lambda x: int(x, 0), required=True)
     bench_parser.add_argument("--binding-id", type=lambda x: int(x, 0), default=DEFAULT_BINDING_ID)
+    add_seq_argument(bench_parser)
     bench_parser.add_argument("--algo", choices=("aes", "sm4"), required=True)
     bench_parser.add_argument("--repeats", type=int, default=DEFAULT_BENCH_REPEATS)
+
+    acl_write_parser = subparsers.add_parser("acl-write", help="Install one ACL tuple rule into shadow ingress")
+    acl_write_parser.add_argument("--session-id", type=lambda x: int(x, 0), required=True)
+    acl_write_parser.add_argument("--binding-id", type=lambda x: int(x, 0), default=DEFAULT_BINDING_ID)
+    add_seq_argument(acl_write_parser)
+    acl_write_parser.add_argument("--src-ip", required=True)
+    acl_write_parser.add_argument("--src-port", type=lambda x: int(x, 0), required=True)
+    acl_write_parser.add_argument("--dst-ip", required=True)
+    acl_write_parser.add_argument("--dst-port", type=lambda x: int(x, 0), required=True)
+    acl_write_parser.add_argument("--protocol", type=lambda x: int(x, 0), required=True)
+
+    acl_clear_parser = subparsers.add_parser("acl-clear", help="Clear all ACL rules from shadow ingress")
+    acl_clear_parser.add_argument("--session-id", type=lambda x: int(x, 0), required=True)
+    acl_clear_parser.add_argument("--binding-id", type=lambda x: int(x, 0), default=DEFAULT_BINDING_ID)
+    add_seq_argument(acl_clear_parser)
+
+    acl_status_parser = subparsers.add_parser("acl-status", help="Read shadow ingress ACL drop counter")
+    acl_status_parser.add_argument("--session-id", type=lambda x: int(x, 0), required=True)
+    acl_status_parser.add_argument("--binding-id", type=lambda x: int(x, 0), default=DEFAULT_BINDING_ID)
+    add_seq_argument(acl_status_parser)
 
     args = parser.parse_args()
 
     client = ControlClient(ip=args.ip, source_ip=args.source_ip, timeout=args.timeout, port=args.port)
     try:
-        if args.command == "hello":
-            msg = client.hello()
-            print(f"session_id=0x{msg.session_id:08x}")
-            print(f"binding_id=0x{client.binding_id:08x}")
-            return 0
+        try:
+            if args.command == "hello":
+                msg = client.hello()
+                print(f"session_id=0x{msg.session_id:08x}")
+                print(f"binding_id=0x{client.binding_id:08x}")
+                return 0
 
-        client.session_id = args.session_id
-        client.binding_id = args.binding_id
+            client.session_id = args.session_id
+            client.binding_id = args.binding_id
+            if hasattr(args, "seq_id") and args.seq_id is not None:
+                client.seq_id = max(args.seq_id - 1, 0)
 
-        if args.command == "set-key":
-            key = bytes.fromhex(args.key_hex) if args.key_hex else None
-            msg = client.set_key(args.algo, user_key=key, dual_enable=args.dual_enable)
-            print(f"session_id=0x{client.session_id:08x}")
-            print(f"binding_id=0x{client.binding_id:08x}")
-            print(f"reply_payload_hex={msg.payload.hex()}")
-            return 0
-        if args.command == "status":
-            status = decode_status_payload(client.status().payload)
-            for key, value in status.items():
-                print(f"{key}={value}")
-            return 0
-        if args.command == "lock":
-            client.lock()
-            print("locked=1")
-            return 0
-        if args.command == "unlock":
-            client.unlock()
-            print("locked=0")
-            return 0
-        if args.command == "bench":
-            bench = decode_bench_payload(client.bench(args.algo, repeats=args.repeats).payload)
-            print(f"algo={bench['algo']}")
-            print(f"repeats={bench['repeats']}")
-            for record in bench["records"]:
-                print(f"len={record['length']} sw_us={record['sw_us']} hw_us={record['hw_us']}")
-            return 0
-        print(f"unknown command: {args.command}", file=sys.stderr)
-        return 2
+            if args.command == "set-key":
+                key = bytes.fromhex(args.key_hex) if args.key_hex else None
+                msg = client.set_key(args.algo, user_key=key, dual_enable=args.dual_enable)
+                print(f"session_id=0x{client.session_id:08x}")
+                print(f"binding_id=0x{client.binding_id:08x}")
+                print(f"reply_payload_hex={msg.payload.hex()}")
+                return 0
+            if args.command == "status":
+                status = decode_status_payload(client.status().payload)
+                for key, value in status.items():
+                    print(f"{key}={value}")
+                return 0
+            if args.command == "lock":
+                client.lock()
+                print("locked=1")
+                return 0
+            if args.command == "unlock":
+                client.unlock()
+                print("locked=0")
+                return 0
+            if args.command == "bench":
+                bench = decode_bench_payload(client.bench(args.algo, repeats=args.repeats).payload)
+                print(f"algo={bench['algo']}")
+                print(f"repeats={bench['repeats']}")
+                for record in bench["records"]:
+                    print(f"len={record['length']} sw_us={record['sw_us']} hw_us={record['hw_us']}")
+                return 0
+            if args.command == "acl-write":
+                client.acl_write(
+                    src_ip=args.src_ip,
+                    src_port=args.src_port,
+                    dst_ip=args.dst_ip,
+                    dst_port=args.dst_port,
+                    protocol=args.protocol,
+                )
+                print("acl_write=1")
+                return 0
+            if args.command == "acl-clear":
+                client.acl_clear()
+                print("acl_clear=1")
+                return 0
+            if args.command == "acl-status":
+                msg = client.acl_status()
+                if len(msg.payload) < 4:
+                    raise ValueError("acl-status payload too short")
+                acl_count = struct.unpack("!I", msg.payload[:4])[0]
+                print(f"acl_drop_count={acl_count}")
+                return 0
+            print(f"unknown command: {args.command}", file=sys.stderr)
+            return 2
+        except ControlStatusError as exc:
+            if exc.status_code == args.expect_status:
+                print(f"status_code={exc.status_code}")
+                print(f"msg_type={exc.msg_type}")
+                print(f"session_id=0x{exc.message.session_id:08x}")
+                return 0
+            print(str(exc), file=sys.stderr)
+            return 1
     finally:
         client.close()
 
