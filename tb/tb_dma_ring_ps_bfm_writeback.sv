@@ -290,6 +290,9 @@ module tb_dma_ring_ps_bfm_writeback;
         .o_ring_size(ring_size),
         .o_sw_tail_ptr(sw_tail_ptr),
         .i_hw_head_ptr(hw_head_ptr),
+        .i_debug_status(32'd0),
+        .i_debug_source_progress(32'd0),
+        .i_debug_sink_progress(32'd0),
         .i_done(dma_done),
         .i_error(dma_error),
         .i_busy(dma_busy)

@@ -139,6 +139,9 @@ module tb_full_system_verification;
         .o_ring_size      (),
         .o_sw_tail_ptr    (),
         .i_hw_head_ptr    (16'd0),
+        .i_debug_status   (32'd0),
+        .i_debug_source_progress(32'd0),
+        .i_debug_sink_progress(32'd0),
         .i_done           (1'b0),
         .i_error          (1'b0)
     );

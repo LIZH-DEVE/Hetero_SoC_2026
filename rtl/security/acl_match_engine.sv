@@ -85,14 +85,30 @@ module acl_match_engine #(
         end
     end
 
-    // Control/stats pipeline (with async reset)
-    always_ff @(posedge clk or negedge rst_n) begin
+    // Keep the BRAM-facing lookup pipeline synchronous so inferred RAM address
+    // pins are not driven by async-reset flops.
+    always_ff @(posedge clk) begin
         if (!rst_n) begin
-            active_gen     <= {{(GEN_WIDTH-1){1'b0}}, 1'b1};
             lookup_addr_q  <= '0;
             lookup_tuple_q <= '0;
             lookup_gen_q   <= '0;
             lookup_req_q   <= 1'b0;
+        end else begin
+            lookup_req_q  <= tuple_valid;
+
+            if (tuple_valid) begin
+                lookup_addr_q  <= tuple_hash_now[ADDR_WIDTH-1:0];
+                lookup_tuple_q <= tuple_in;
+                lookup_gen_q   <= active_gen;
+            end
+        end
+    end
+
+    // Keep BRAM write-side generation state on synchronous reset so RAM
+    // control pins are not driven by async-reset flops.
+    always_ff @(posedge clk) begin
+        if (!rst_n) begin
+            active_gen     <= {{(GEN_WIDTH-1){1'b0}}, 1'b1};
             match_valid_q  <= 1'b0;
             result_valid_r <= 1'b0;
             acl_hit_r      <= 1'b0;
@@ -101,18 +117,11 @@ module acl_match_engine #(
             hit_cnt        <= 32'd0;
             miss_cnt       <= 32'd0;
         end else begin
-            lookup_req_q  <= tuple_valid;
             match_valid_q <= lookup_req_q;
             result_valid_r <= 1'b0;
             acl_hit_r <= 1'b0;
             acl_drop_r <= 1'b0;
             hit_way_r <= '0;
-
-            if (tuple_valid) begin
-                lookup_addr_q  <= tuple_hash_now[ADDR_WIDTH-1:0];
-                lookup_tuple_q <= tuple_in;
-                lookup_gen_q   <= active_gen;
-            end
 
             if (acl_clear) begin
                 if (active_gen == {GEN_WIDTH{1'b1}}) begin

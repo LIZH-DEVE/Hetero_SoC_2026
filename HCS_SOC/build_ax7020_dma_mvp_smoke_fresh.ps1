@@ -42,9 +42,14 @@ $rebuildScript = Join-Path $workspace "rebuild_system_stage1.ps1"
 $platformScript = Join-Path $workspace "generate_ax7020_standalone_platform.ps1"
 $appBuildScript = Join-Path $workspace "build_ax7020_dma_mvp_smoke_app.ps1"
 $bootBuildScript = Join-Path $workspace "build_boot_bin.ps1"
+$timingTriageScript = Join-Path $workspace "invoke_vivado_timing_triage.ps1"
+$timingParserScript = Join-Path $workspace "read_vivado_timing_summary.ps1"
 $xsaPath = Join-Path $workspace "system_wrapper.xsa"
 $xsctWorkspace = Join-Path $workspace "repo_system_wrapper_dma_platform_xsct\workspace"
 $xsaExtractDir = Join-Path $workspace "repo_system_wrapper_dma_platform_xsct\xsa_extract"
+$triageDir = Join-Path $workspace "timing_triage\system_wrapper_current"
+$timingSummaryReport = Join-Path $triageDir "timing_summary.rpt"
+$routedDcp = Join-Path $workspace "HCS_SOC.runs\impl_1\system_wrapper_routed.dcp"
 $platformName = "ax7020_system_wrapper_dma_platform"
 $appElf = Join-Path $workspace "ax7020_dma_mvp_smoke_app\build\ax7020_dma_mvp_smoke_app.elf"
 $outputDir = Join-Path $workspace "sd_boot\ax7020_dma_mvp_smoke_system"
@@ -52,10 +57,14 @@ $readmePath = Join-Path $outputDir "readme.txt"
 $readbackPath = Join-Path $outputDir "bootgen_read.txt"
 $bootBinPath = Join-Path $outputDir "BOOT.BIN"
 
-foreach ($path in @($rebuildScript, $platformScript, $appBuildScript, $bootBuildScript)) {
+foreach ($path in @($rebuildScript, $platformScript, $appBuildScript, $bootBuildScript, $timingTriageScript, $timingParserScript)) {
     if (-not (Test-Path $path)) {
         throw "Required script not found: $path"
     }
+}
+
+if (Test-Path $outputDir) {
+    Remove-Item -Recurse -Force $outputDir
 }
 
 & powershell -ExecutionPolicy Bypass -File $rebuildScript `
@@ -63,6 +72,21 @@ foreach ($path in @($rebuildScript, $platformScript, $appBuildScript, $bootBuild
     -CryptoInstances $CryptoInstances
 if ($LASTEXITCODE -ne 0) {
     throw "system_wrapper rebuild failed"
+}
+
+& powershell -ExecutionPolicy Bypass -File $timingTriageScript `
+    -VivadoBat $VivadoBat `
+    -DcpPath $routedDcp `
+    -OutputDir $triageDir
+if ($LASTEXITCODE -ne 0) {
+    throw "system_wrapper timing triage failed"
+}
+
+& powershell -ExecutionPolicy Bypass -File $timingParserScript `
+    -ReportPath $timingSummaryReport `
+    -FailIfViolating
+if ($LASTEXITCODE -ne 0) {
+    throw "system_wrapper timing gate failed; DMA smoke image is not board-eligible"
 }
 
 if (Test-Path $xsaExtractDir) {
@@ -94,15 +118,10 @@ $fsblElf = Get-ChildItem -Path $xsctWorkspace -Recurse -File -Filter fsbl.elf |
 if ($null -eq $fsblElf) {
     throw "system_wrapper fresh fsbl.elf not found under $xsctWorkspace"
 }
-
-$specFile = Get-ChildItem -Path $xsctWorkspace -Recurse -File -Filter Xilinx.spec |
-    Where-Object { $_.DirectoryName -match 'standalone_ps7_cortexa9_0' } |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1
-if ($null -eq $specFile) {
-    throw "system_wrapper platform Xilinx.spec not found under $xsctWorkspace"
+$platformSwDir = Join-Path $fsblElf.DirectoryName "zynq_fsbl_bsp\ps7_cortexa9_0"
+if (-not (Test-Path $platformSwDir)) {
+    throw "system_wrapper fresh FSBL BSP processor root not found: $platformSwDir"
 }
-$platformSwDir = $specFile.DirectoryName
 
 & powershell -ExecutionPolicy Bypass -File $appBuildScript `
     -VitisRoot $VitisRoot `
@@ -142,6 +161,7 @@ Fresh source chain:
 - system rebuild: rebuild_system_stage1.ps1 / rebuild_system_stage1.tcl
 - XSA export: system_wrapper.xsa
 - XSCT platform workspace: repo_system_wrapper_dma_platform_xsct\workspace
+- Timing gate report: $timingSummaryReport
 - FSBL path: $($fsblElf.FullName)
 - Bitstream path: $bitstream
 - Platform SW dir: $platformSwDir
@@ -152,6 +172,10 @@ Board-side scope:
 1. UART banner and DMA CSR snapshot
 2. One normal descriptor via PS CSR injector -> PBM -> Crypto -> DMA -> CSW
 3. One error descriptor returning CSW ERR + STS
+
+Board-admission rule:
+- This BOOT.BIN is generated only when system_wrapper timing is clean:
+  WNS >= 0, TNS = 0, setup failing endpoints = 0, hold failing endpoints = 0
 "@
 
 Set-Content -Path $readmePath -Value $readme -Encoding ASCII

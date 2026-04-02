@@ -528,7 +528,7 @@
     // =========================================================
     
     crypto_bridge_top #(
-        .NUM_INSTANCES(2)
+        .NUM_INSTANCES(1)
     ) u_crypto_bridge_top (
         .clk             (S_AXI_ACLK),
         .rst_n           (S_AXI_ARESETN),

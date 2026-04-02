@@ -12,6 +12,8 @@ module crypto_bridge_top #(
     input  logic [127:0] i_key,
     input  logic [127:0] i_key_hi,
     output logic         o_system_ready,
+    output logic [127:0] o_debug_last_plaintext,
+    output logic [127:0] o_debug_key_lo_active,
 
     input  logic [31:0]  i_pbm_data,
     input  logic         i_pbm_empty,
@@ -80,6 +82,7 @@ module crypto_bridge_top #(
     logic [255:0] key_active;
     logic [127:0] key_lo_active;
     logic [127:0] key_hi_active;
+    logic [127:0] debug_last_plaintext_q;
     
     logic [31:0]  context_fp_cache;
     logic [31:0]  context_fp_now;
@@ -105,6 +108,8 @@ module crypto_bridge_top #(
     assign key_lo_active = key_shadow_lo_reg ^ key_mask_lo_reg;
     assign key_hi_active = key_shadow_hi_reg ^ key_mask_hi_reg;
     assign key_active = aes256_reg ? {key_hi_active, key_lo_active} : {128'd0, key_lo_active};
+    assign o_debug_last_plaintext = debug_last_plaintext_q;
+    assign o_debug_key_lo_active = key_lo_active;
 
     
     always_ff @(posedge clk or negedge rst_n) begin
@@ -125,8 +130,10 @@ module crypto_bridge_top #(
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             input_seq_counter <= {SEQ_WIDTH{1'b0}};
+            debug_last_plaintext_q <= 128'd0;
         end else if (sched_valid) begin
             input_seq_counter <= input_seq_counter + 1'b1;
+            debug_last_plaintext_q <= plaintext_reg;
         end
     end
     
@@ -552,7 +559,7 @@ module crypto_bridge_top #(
     assign mid_fifo_wr_en = rob_ready_to_pop && !mid_fifo_full;
     assign mid_fifo_din = rob_data[output_seq_expected[ROB_PTR_WIDTH-1:0]];
     
-    sync_fifo #(.WIDTH(128), .DEPTH(64)) u_mid_fifo (
+    sync_fifo #(.WIDTH(128), .DEPTH(16)) u_mid_fifo (
         .clk(clk),
         .rst_n(rst_n),
         .wr_en(mid_fifo_wr_en),
@@ -578,7 +585,7 @@ module crypto_bridge_top #(
         .dout_ready(gb_dout_ready)
     );
     
-    sync_fifo #(.WIDTH(33), .DEPTH(128)) u_out_fifo (
+    sync_fifo #(.WIDTH(33), .DEPTH(16)) u_out_fifo (
         .clk(clk),
         .rst_n(rst_n),
         .wr_en(gb_dout_valid),

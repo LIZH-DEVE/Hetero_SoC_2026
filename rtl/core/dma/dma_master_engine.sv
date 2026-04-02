@@ -14,6 +14,8 @@ module dma_master_engine #(
     output logic                    o_done,
     output logic                    o_error,
     output logic [1:0]              o_bresp,
+    output logic [31:0]             o_debug_bytes_written,
+    output logic [7:0]              o_debug_state,
 
     // HP-port baseline: PS software owns coherency. Descriptors/payloads must
     // be flushed before ringing the doorbell, and results invalidated before
@@ -64,10 +66,14 @@ module dma_master_engine #(
     } state_t;
 
     state_t state, next_state;
+    localparam int unsigned BYTES_PER_BEAT = DATA_WIDTH / 8;
+    localparam integer MAX_BURST_BEATS = 16;
+    localparam integer MAX_BURST_BYTES = MAX_BURST_BEATS * BYTES_PER_BEAT;
 
     logic                    addr_unaligned;
     logic [ADDR_WIDTH-1:0]   current_addr;
     logic [31:0]             bytes_remaining;
+    logic [31:0]             bytes_written_q;
     logic [31:0]             burst_bytes_calc;
     logic [7:0]              current_awlen;
     logic [8:0]              beat_count;
@@ -81,7 +87,7 @@ module dma_master_engine #(
 
     always_comb begin
         logic [12:0] limit;
-        limit = (dist_to_4k < 13'd1024) ? dist_to_4k : 13'd1024;
+        limit = (dist_to_4k < MAX_BURST_BYTES) ? dist_to_4k : MAX_BURST_BYTES;
         burst_bytes_calc = (bytes_remaining < limit) ? bytes_remaining : limit;
     end
 
@@ -90,6 +96,7 @@ module dma_master_engine #(
             state <= IDLE;
             current_addr <= '0;
             bytes_remaining <= 32'd0;
+            bytes_written_q <= 32'd0;
             current_awlen <= 8'd0;
             beat_count <= 9'd0;
             outstanding_writes <= '0;
@@ -103,6 +110,7 @@ module dma_master_engine #(
             if (state == IDLE) begin
                 o_error <= 1'b0;
                 o_bresp <= 2'b00;
+                bytes_written_q <= 32'd0;
             end
 
             if (i_start && addr_unaligned) begin
@@ -127,8 +135,10 @@ module dma_master_engine #(
                     if (i_start && i_total_len != 0 && !addr_unaligned) begin
                         current_addr <= i_base_addr;
                         bytes_remaining <= {i_total_len[31:2], 2'b00};
+                        bytes_written_q <= 32'd0;
                     end else if (i_start && i_total_len == 0) begin
                         bytes_remaining <= 32'd0;
+                        bytes_written_q <= 32'd0;
                     end
                 end
 
@@ -144,6 +154,7 @@ module dma_master_engine #(
                 DATA: begin
                     if (m_axi_wvalid && m_axi_wready) begin
                         beat_count <= beat_count + 9'd1;
+                        bytes_written_q <= bytes_written_q + BYTES_PER_BEAT;
                     end
                 end
 
@@ -223,6 +234,8 @@ module dma_master_engine #(
     assign o_fifo_ren   = (state == DATA) && m_axi_wready && !i_fifo_empty;
 
     assign m_axi_bready = (state == RESP);
+    assign o_debug_bytes_written = bytes_written_q;
+    assign o_debug_state = {5'd0, state};
 
     assign m_axi_arvalid = 1'b0;
     assign m_axi_araddr  = '0;

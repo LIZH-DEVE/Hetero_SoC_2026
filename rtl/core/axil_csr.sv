@@ -2,7 +2,8 @@
 
 module axil_csr #(
     parameter ADDR_WIDTH = 32,
-    parameter DATA_WIDTH = 32
+    parameter DATA_WIDTH = 32,
+    parameter bit RAW_COPY_IRQ_WINDOW = 1'b0
 )(
     input  logic                   clk,
     input  logic                   rst_n,
@@ -47,6 +48,7 @@ module axil_csr #(
     output logic                   o_auth_en,     // Bit 6: Config Auth Enable
     output logic                   o_acl_en,      // Bit 7: ACL Filter Enable
     output logic                   o_dna_lock_en, // Bit 8: DNA Lock Enable
+    output logic                   o_soft_reset,  // Bit 10: DMA/FIFO soft reset pulse
     
     // --- S2MM/MM2S Interface (0x20 - 0x24) ---
     output logic [31:0]            o_s2mm_addr,   // 0x20: S2MM Address
@@ -85,6 +87,8 @@ module axil_csr #(
     input  logic [31:0]            i_net_applied_local_ip,
     input  logic [31:0]            i_net_applied_local_mac_lo,
     input  logic [31:0]            i_net_applied_local_mac_hi,
+    input  logic [31:0]            i_drop_wrong_port_count,
+    input  logic [31:0]            i_drop_unaligned_count,
 
     // --- Linear DMA Config (0x08, 0x0C) ---
     output logic [31:0]            o_base_addr,
@@ -106,12 +110,30 @@ module axil_csr #(
     output logic [31:0]            o_ring_size,   // 0x5C: Ring Size (Entries)
     output logic [15:0]            o_sw_tail_ptr, // 0x58: Software Tail Ptr
     input  logic [15:0]            i_hw_head_ptr, // 0x54: Hardware Head Ptr (Read Only)
+    output logic                   o_irq_enable,  // 0x60[0]
+    output logic                   o_irq_ack,     // 0x68 write-1 pulse
+    output logic [31:0]            o_irq_coalesce_count,   // 0x6C
+    output logic [31:0]            o_irq_coalesce_timeout, // 0x70
+    input  logic [31:0]            i_irq_status,
+    input  logic [31:0]            i_debug_status,
+    input  logic [31:0]            i_debug_source_progress,
+    input  logic [31:0]            i_debug_sink_progress,
+    input  logic [31:0]            i_debug_plaintext_word0,
+    input  logic [31:0]            i_debug_plaintext_word1,
+    input  logic [31:0]            i_debug_plaintext_word2,
+    input  logic [31:0]            i_debug_plaintext_word3,
+    input  logic [31:0]            i_debug_key_word0,
+    input  logic [31:0]            i_debug_key_word1,
+    input  logic [31:0]            i_debug_key_word2,
+    input  logic [31:0]            i_debug_key_word3,
 
     // --- Status Inputs ---
     input  logic                   i_done,
     input  logic                   i_error,
     input  logic                   i_busy
 );
+
+    import dma_csr_pkg::*;
 
     // =========================================================================
     // Internal Registers
@@ -156,6 +178,11 @@ module axil_csr #(
 
     // [Day 11] 0x5C: Ring Size
     logic [31:0] reg_ring_size;
+
+    // Raw-copy IRQ control window (0x60 - 0x70) when RAW_COPY_IRQ_WINDOW=1.
+    logic [31:0] reg_irq_enable;
+    logic [31:0] reg_irq_coalesce_count;
+    logic [31:0] reg_irq_coalesce_timeout;
 
     // Security / ACL Registers (0x60 - 0x70)
     logic [31:0] reg_acl_addr;
@@ -212,6 +239,9 @@ module axil_csr #(
             reg_cache_ctrl <= 0;
             reg_acl_cnt <= 0;
             reg_ring_base <= 0; reg_ring_tail <= 0; reg_ring_size <= 0;
+            reg_irq_enable <= 32'd0;
+            reg_irq_coalesce_count <= DMA_IRQ_DEFAULT_COALESCE_COUNT;
+            reg_irq_coalesce_timeout <= DMA_IRQ_DEFAULT_COALESCE_TIMEOUT_CYCLES;
             reg_s2mm_addr <= 0; reg_s2mm_data <= 0; reg_loopback_mode <= 0;
             reg_acl_addr <= 0; reg_acl_data0 <= 0; reg_acl_data1 <= 0; reg_acl_data2 <= 0; reg_acl_data3 <= 0;
             reg_net_cfg0 <= 0; reg_net_local_ip <= 32'hC0A8_0114; reg_net_local_mac_lo <= 32'h3500_0120; reg_net_local_mac_hi <= 32'h0000_020A;
@@ -223,6 +253,8 @@ module axil_csr #(
             o_acl_write_en <= 0;
             o_acl_clear <= 0;
             o_ring_doorbell <= 0;
+            o_soft_reset <= 0;
+            o_irq_ack <= 0;
             o_net_cfg0_we <= 0;
             o_net_local_ip_we <= 0;
             o_net_local_mac_lo_we <= 0;
@@ -264,6 +296,8 @@ module axil_csr #(
             o_acl_write_en <= 0;
             o_acl_clear <= 0;
             o_ring_doorbell <= 0;
+            o_soft_reset <= 0;
+            o_irq_ack <= 0;
             o_net_cfg0_we <= 0;
             o_net_local_ip_we <= 0;
             o_net_local_mac_lo_we <= 0;
@@ -308,6 +342,8 @@ module axil_csr #(
                         end
                         // Bit 1: HW Init Trigger
                         if (s_axil_wstrb[0] && s_axil_wdata[1]) o_hw_init <= 1;
+                        // Bit 10: DMA/FIFO soft reset trigger
+                        if (s_axil_wstrb[1] && s_axil_wdata[10]) o_soft_reset <= 1'b1;
                     end
                     8'h08: reg_base_addr <= apply_wstrb(reg_base_addr, s_axil_wdata, s_axil_wstrb);
                     8'h0C: reg_len       <= apply_wstrb(reg_len, s_axil_wdata, s_axil_wstrb);
@@ -344,15 +380,43 @@ module axil_csr #(
                     8'h58: reg_ring_tail <= apply_wstrb(reg_ring_tail, s_axil_wdata, s_axil_wstrb);
                     8'h5C: reg_ring_size <= apply_wstrb(reg_ring_size, s_axil_wdata, s_axil_wstrb);
 
-                    // ACL Config Registers
-                    8'h60: reg_acl_addr  <= apply_wstrb(reg_acl_addr,  s_axil_wdata, s_axil_wstrb);
-                    8'h64: reg_acl_data0 <= apply_wstrb(reg_acl_data0, s_axil_wdata, s_axil_wstrb);
-                    8'h68: reg_acl_data1 <= apply_wstrb(reg_acl_data1, s_axil_wdata, s_axil_wstrb);
-                    8'h6C: reg_acl_data2 <= apply_wstrb(reg_acl_data2, s_axil_wdata, s_axil_wstrb);
+                    // 0x60-0x70: raw-copy IRQ window or legacy ACL window.
+                    8'h60: begin
+                        if (RAW_COPY_IRQ_WINDOW) begin
+                            reg_irq_enable <= apply_wstrb(reg_irq_enable, s_axil_wdata, s_axil_wstrb);
+                        end else begin
+                            reg_acl_addr <= apply_wstrb(reg_acl_addr, s_axil_wdata, s_axil_wstrb);
+                        end
+                    end
+                    8'h64: begin
+                        if (!RAW_COPY_IRQ_WINDOW) begin
+                            reg_acl_data0 <= apply_wstrb(reg_acl_data0, s_axil_wdata, s_axil_wstrb);
+                        end
+                    end
+                    8'h68: begin
+                        if (RAW_COPY_IRQ_WINDOW) begin
+                            if (s_axil_wstrb[0] && s_axil_wdata[DMA_IRQ_ACK_BIT_DONE_ACK]) begin
+                                o_irq_ack <= 1'b1;
+                            end
+                        end else begin
+                            reg_acl_data1 <= apply_wstrb(reg_acl_data1, s_axil_wdata, s_axil_wstrb);
+                        end
+                    end
+                    8'h6C: begin
+                        if (RAW_COPY_IRQ_WINDOW) begin
+                            reg_irq_coalesce_count <= apply_wstrb(reg_irq_coalesce_count, s_axil_wdata, s_axil_wstrb);
+                        end else begin
+                            reg_acl_data2 <= apply_wstrb(reg_acl_data2, s_axil_wdata, s_axil_wstrb);
+                        end
+                    end
                     8'h70: begin
-                        reg_acl_data3 <= apply_wstrb(reg_acl_data3, s_axil_wdata, s_axil_wstrb);
-                        if (s_axil_wstrb[0] && s_axil_wdata[0]) o_acl_write_en <= 1'b1;
-                        if (s_axil_wstrb[0] && s_axil_wdata[1]) o_acl_clear <= 1'b1;
+                        if (RAW_COPY_IRQ_WINDOW) begin
+                            reg_irq_coalesce_timeout <= apply_wstrb(reg_irq_coalesce_timeout, s_axil_wdata, s_axil_wstrb);
+                        end else begin
+                            reg_acl_data3 <= apply_wstrb(reg_acl_data3, s_axil_wdata, s_axil_wstrb);
+                            if (s_axil_wstrb[0] && s_axil_wdata[0]) o_acl_write_en <= 1'b1;
+                            if (s_axil_wstrb[0] && s_axil_wdata[1]) o_acl_clear <= 1'b1;
+                        end
                     end
                     8'h90: begin
                         reg_net_cfg0 <= apply_wstrb(reg_net_cfg0, s_axil_wdata, s_axil_wstrb);
@@ -446,12 +510,12 @@ module axil_csr #(
                     8'h58: s_axil_rdata <= reg_ring_tail;
                     8'h5C: s_axil_rdata <= reg_ring_size;
 
-                    // ACL Config Registers
-                    8'h60: s_axil_rdata <= reg_acl_addr;
-                    8'h64: s_axil_rdata <= reg_acl_data0;
-                    8'h68: s_axil_rdata <= reg_acl_data1;
-                    8'h6C: s_axil_rdata <= reg_acl_data2;
-                    8'h70: s_axil_rdata <= reg_acl_data3;
+                    // 0x60-0x70: raw-copy IRQ window or legacy ACL window.
+                    8'h60: s_axil_rdata <= RAW_COPY_IRQ_WINDOW ? reg_irq_enable : reg_acl_addr;
+                    8'h64: s_axil_rdata <= RAW_COPY_IRQ_WINDOW ? i_irq_status : reg_acl_data0;
+                    8'h68: s_axil_rdata <= RAW_COPY_IRQ_WINDOW ? 32'd0 : reg_acl_data1;
+                    8'h6C: s_axil_rdata <= RAW_COPY_IRQ_WINDOW ? reg_irq_coalesce_count : reg_acl_data2;
+                    8'h70: s_axil_rdata <= RAW_COPY_IRQ_WINDOW ? reg_irq_coalesce_timeout : reg_acl_data3;
                     8'h90: s_axil_rdata <= reg_net_cfg0;
                     8'h94: s_axil_rdata <= reg_net_local_ip;
                     8'h98: s_axil_rdata <= reg_net_local_mac_lo;
@@ -468,6 +532,19 @@ module axil_csr #(
                      8'hC0: s_axil_rdata <= i_net_applied_local_ip;
                      8'hC4: s_axil_rdata <= i_net_applied_local_mac_lo;
                      8'hC8: s_axil_rdata <= i_net_applied_local_mac_hi;
+                     8'hCC: s_axil_rdata <= i_drop_wrong_port_count;
+                     8'hD0: s_axil_rdata <= i_drop_unaligned_count;
+                     8'hD4: s_axil_rdata <= i_debug_status;
+                     8'hD8: s_axil_rdata <= i_debug_source_progress;
+                     8'hDC: s_axil_rdata <= i_debug_sink_progress;
+                     8'hE0: s_axil_rdata <= i_debug_plaintext_word0;
+                     8'hE4: s_axil_rdata <= i_debug_plaintext_word1;
+                     8'hE8: s_axil_rdata <= i_debug_plaintext_word2;
+                     8'hEC: s_axil_rdata <= i_debug_plaintext_word3;
+                     8'hF0: s_axil_rdata <= i_debug_key_word0;
+                     8'hF4: s_axil_rdata <= i_debug_key_word1;
+                     8'hF8: s_axil_rdata <= i_debug_key_word2;
+                     8'hFC: s_axil_rdata <= i_debug_key_word3;
                      default: s_axil_rdata <= 32'd0;
                 endcase
             end else if (s_axil_rvalid && s_axil_rready) begin
@@ -505,6 +582,9 @@ module axil_csr #(
     assign o_ring_base   = reg_ring_base;
     assign o_ring_size   = reg_ring_size;
     assign o_sw_tail_ptr = reg_ring_tail[15:0];
+    assign o_irq_enable = reg_irq_enable[DMA_IRQ_ENABLE_BIT_DONE];
+    assign o_irq_coalesce_count = reg_irq_coalesce_count;
+    assign o_irq_coalesce_timeout = reg_irq_coalesce_timeout;
 
     assign o_acl_write_addr = reg_acl_addr[11:0];
     assign o_acl_write_data = {reg_acl_data3[7:0], reg_acl_data2, reg_acl_data1, reg_acl_data0};

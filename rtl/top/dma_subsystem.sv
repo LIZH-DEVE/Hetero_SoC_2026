@@ -124,7 +124,10 @@ module dma_subsystem #(
     // Internal Signals
     // =========================================================================
     logic                   csr_start, fetcher_start, final_start_raw, final_start;
-    logic [31:0]            csr_addr, fetcher_addr, final_addr;
+    logic                   csr_soft_reset;
+    logic                   fetcher_completion_event_unused;
+    logic                   fetcher_stream_tlast_unused;
+    logic [31:0]            csr_addr, fetcher_addr, fetcher_src_addr_unused, final_addr;
     logic [31:0]            csr_len, fetcher_len, final_len;
     logic                   csr_algo, fetcher_algo, final_algo;
     logic                   csr_encdec;  // Encrypt/Decrypt control
@@ -451,8 +454,15 @@ module dma_subsystem #(
         .s_axil_araddr(s_axil_araddr), .s_axil_arvalid(s_axil_arvalid), .s_axil_arready(s_axil_arready),
         .s_axil_rdata(s_axil_rdata), .s_axil_rresp(s_axil_rresp), .s_axil_rvalid(s_axil_rvalid), .s_axil_rready(s_axil_rready),
         .o_start(csr_start), .o_base_addr(csr_addr), .o_len(csr_len),
+        .o_soft_reset(csr_soft_reset),
         .o_ring_doorbell(ring_doorbell), .o_ring_base(ring_base), .o_ring_size(ring_size),
         .o_sw_tail_ptr(sw_tail), .i_hw_head_ptr(hw_head),
+        .o_irq_enable(), .o_irq_ack(), .o_irq_coalesce_count(), .o_irq_coalesce_timeout(), .i_irq_status(32'd0),
+        .i_debug_status(32'd0), .i_debug_source_progress(32'd0), .i_debug_sink_progress(32'd0),
+        .i_debug_plaintext_word0(32'd0), .i_debug_plaintext_word1(32'd0),
+        .i_debug_plaintext_word2(32'd0), .i_debug_plaintext_word3(32'd0),
+        .i_debug_key_word0(32'd0), .i_debug_key_word1(32'd0),
+        .i_debug_key_word2(32'd0), .i_debug_key_word3(32'd0),
         .i_done(dma_done), .i_error(dma_error), .i_busy(dma_busy), .o_algo_sel(csr_algo),
         .o_enc_dec(csr_encdec),  // Encrypt/Decrypt control
         .o_hw_init(hw_init), .o_key(csr_key), .o_key_hi(csr_key_hi), .o_aes256_en(csr_aes256_en),
@@ -485,7 +495,9 @@ module dma_subsystem #(
          .i_net_applied_cfg0(net_applied_cfg0),
          .i_net_applied_local_ip(net_applied_local_ip),
          .i_net_applied_local_mac_lo(net_applied_local_mac_lo),
-         .i_net_applied_local_mac_hi(net_applied_local_mac_hi)
+         .i_net_applied_local_mac_hi(net_applied_local_mac_hi),
+         .i_drop_wrong_port_count(32'd0),
+         .i_drop_unaligned_count(32'd0)
      );
 
     network_stage1_path u_network_stage1 (
@@ -544,12 +556,16 @@ module dma_subsystem #(
     );
 
     dma_desc_fetcher #(.ADDR_WIDTH(ADDR_WIDTH)) u_fetcher (
-        .clk(clk), .rst_n(rst_n),
+        .clk(clk), .rst_n(rst_n), .i_soft_reset(csr_soft_reset),
         .i_ring_base(ring_base), .i_ring_size(ring_size), .i_ring_doorbell(ring_doorbell),
         .i_sw_tail_ptr(sw_tail), .o_hw_head_ptr(hw_head),
         .o_dma_start(fetcher_start), .o_dma_addr(fetcher_addr),
+        .o_dma_src_addr(fetcher_src_addr_unused),
         .o_dma_len(fetcher_len), .o_dma_algo(fetcher_algo),
+        .o_dma_stream_tlast(fetcher_stream_tlast_unused),
         .i_dma_done(dma_done), .i_dma_error(dma_error), .i_dma_bresp(dma_status_bresp),
+        .i_dma_actual_len(32'd0),
+        .o_completion_event(fetcher_completion_event_unused),
         .m_axi_araddr(m_axis_fetcher_araddr), .m_axi_arlen(m_axis_fetcher_arlen),
         .m_axi_arsize(m_axis_fetcher_arsize), .m_axi_arburst(m_axis_fetcher_arburst),
         .m_axi_arvalid(m_axis_fetcher_arvalid), .m_axi_arready(m_axis_fetcher_arready),
@@ -749,6 +765,8 @@ assign secure_key       = dna_lock_en ? effective_key : csr_key;
         .i_key(secure_key),
         .i_key_hi(secure_key_hi),
         .o_system_ready(),
+        .o_debug_last_plaintext(),
+        .o_debug_key_lo_active(),
         .i_pbm_data(pbm_data), .i_pbm_empty(pbm_empty), .i_pbm_valid(bridge_rd_valid),
         .o_pbm_rd_en(bridge_rd_pbm),
         .o_tx_data(crypto_to_dma_data),

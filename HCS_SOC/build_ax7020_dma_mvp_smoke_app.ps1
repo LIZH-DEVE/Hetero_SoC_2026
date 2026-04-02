@@ -15,12 +15,33 @@ if ([string]::IsNullOrWhiteSpace($PlatformSwDir)) {
 }
 $includeDir = Join-Path $platformSwDir "include"
 $libDir = Join-Path $platformSwDir "lib"
-$specsFile = Join-Path $platformSwDir "Xilinx.spec"
 $linkerScript = Join-Path $appSrcDir "lscript.ld"
 $gcc = Join-Path $VitisRoot "gnu\aarch32\nt\gcc-arm-none-eabi\bin\arm-none-eabi-gcc.exe"
 $size = Join-Path $VitisRoot "gnu\aarch32\nt\gcc-arm-none-eabi\bin\arm-none-eabi-size.exe"
 $mainSource = Join-Path $appSrcDir "main.c"
 $driverSource = Join-Path $workspace "dma_mvp_ps_driver_ref.c"
+
+function Resolve-SpecsFile {
+    param([string]$StartDir)
+
+    $current = Resolve-Path $StartDir
+    while ($null -ne $current) {
+        $candidate = Join-Path $current.Path "Xilinx.spec"
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+
+        $parent = Split-Path -Parent $current.Path
+        if ([string]::IsNullOrWhiteSpace($parent) -or ($parent -eq $current.Path)) {
+            break
+        }
+        $current = Resolve-Path $parent
+    }
+
+    throw "Xilinx.spec could not be resolved from platform root: $StartDir"
+}
+
+$specsFile = Resolve-SpecsFile -StartDir $PlatformSwDir
 
 foreach ($path in @(
     $appSrcDir,
@@ -63,6 +84,21 @@ $mainObj = Join-Path $objDir "main.o"
 $driverObj = Join-Path $objDir "dma_mvp_ps_driver_ref.o"
 $elfPath = Join-Path $buildDir "ax7020_dma_mvp_smoke_app.elf"
 $mapPath = Join-Path $buildDir "ax7020_dma_mvp_smoke_app.map"
+$libs = @()
+
+if (Test-Path (Join-Path $libDir "libxilstandalone.a")) {
+    $libs += "-lxilstandalone"
+}
+if (Test-Path (Join-Path $libDir "libxiltimer.a")) {
+    $libs += "-lxiltimer"
+}
+if (Test-Path (Join-Path $libDir "libxil.a")) {
+    $libs += "-lxil"
+}
+
+if ($libs.Count -eq 0) {
+    throw "No linkable Xilinx libraries were found under $libDir"
+}
 
 & $gcc @commonArgs -c $mainSource -o $mainObj
 if ($LASTEXITCODE -ne 0) {
@@ -86,16 +122,17 @@ $linkArgs = @(
     "-Wl,-Map,$mapPath",
     "-Wl,--gc-sections",
     "-L$libDir",
-    "-Wl,--start-group",
-    "-lxilstandalone",
-    "-lxiltimer",
-    "-lxil",
+    "-o",
+    $elfPath
+)
+
+$linkArgs += "-Wl,--start-group"
+$linkArgs += $libs
+$linkArgs += @(
     "-lc",
     "-lgcc",
     "-lm",
-    "-Wl,--end-group",
-    "-o",
-    $elfPath
+    "-Wl,--end-group"
 )
 
 & $gcc @linkArgs

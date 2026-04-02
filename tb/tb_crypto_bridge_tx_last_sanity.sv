@@ -27,6 +27,8 @@ module tb_crypto_bridge_tx_last_sanity;
         .i_key(128'd0),
         .i_key_hi(128'd0),
         .o_system_ready(),
+        .o_debug_last_plaintext(),
+        .o_debug_key_lo_active(),
         .i_pbm_data(32'd0),
         .i_pbm_empty(1'b1),
         .i_pbm_valid(1'b0),

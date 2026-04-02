@@ -7,7 +7,21 @@ param(
 $ErrorActionPreference = "Stop"
 
 $workspace = Split-Path -Parent $MyInvocation.MyCommand.Path
+$timingParserScript = Join-Path $workspace "read_vivado_timing_summary.ps1"
+$timingSummaryReport = Join-Path $workspace "timing_triage\system_wrapper_current\timing_summary.rpt"
 $sourceBoot = Join-Path $workspace "sd_boot\ax7020_dma_mvp_smoke_system\BOOT.BIN"
+
+if (-not (Test-Path $timingParserScript)) {
+    throw "Timing parser script not found: $timingParserScript"
+}
+
+& powershell -ExecutionPolicy Bypass -File $timingParserScript `
+    -ReportPath $timingSummaryReport `
+    -FailIfViolating
+if ($LASTEXITCODE -ne 0) {
+    throw "Refusing DMA smoke deploy because system_wrapper timing is not clean"
+}
+
 $targetBoot = Join-Path $SdDrive "BOOT.BIN"
 
 if (-not (Test-Path $sourceBoot)) {

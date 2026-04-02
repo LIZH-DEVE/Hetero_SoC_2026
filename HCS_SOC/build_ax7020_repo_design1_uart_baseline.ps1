@@ -40,6 +40,7 @@ $exportScript = Join-Path $workspace "export_design1_wrapper_xsa.ps1"
 $platformScript = Join-Path $workspace "generate_ax7020_standalone_platform.ps1"
 $appBuildScript = Join-Path $workspace "build_ax7020_repo_design1_uart_baseline_app.ps1"
 $bootBuildScript = Join-Path $workspace "build_boot_bin.ps1"
+$timingParserScript = Join-Path $workspace "read_vivado_timing_summary.ps1"
 $xsaPath = Join-Path $workspace "design_1_wrapper.xsa"
 $xsctWorkspace = Join-Path $workspace "repo_design1_uart_baseline_xsct\workspace"
 $xsaExtractDir = Join-Path $workspace "repo_design1_uart_baseline_xsct\xsa_extract"
@@ -49,11 +50,16 @@ $outputDir = Join-Path $workspace "sd_boot\ax7020_repo_design1_uart_baseline"
 $readmePath = Join-Path $outputDir "readme.txt"
 $readbackPath = Join-Path $outputDir "bootgen_read.txt"
 $bootBinPath = Join-Path $outputDir "BOOT.BIN"
+$design1TimingReport = Join-Path $workspace "HCS_SOC.runs\HCS_SOC.runs\impl_1\design_1_wrapper_timing_summary_postroute_physopted.rpt"
 
-foreach ($path in @($exportScript, $platformScript, $appBuildScript, $bootBuildScript)) {
+foreach ($path in @($exportScript, $platformScript, $appBuildScript, $bootBuildScript, $timingParserScript)) {
     if (-not (Test-Path $path)) {
         throw "Required script not found: $path"
     }
+}
+
+if (Test-Path $outputDir) {
+    Remove-Item -Recurse -Force $outputDir
 }
 
 & powershell -ExecutionPolicy Bypass -File $exportScript -VivadoBat $VivadoBat
@@ -90,15 +96,10 @@ $fsblElf = Get-ChildItem -Path $xsctWorkspace -Recurse -File -Filter fsbl.elf |
 if ($null -eq $fsblElf) {
     throw "design_1 fresh fsbl.elf not found under $xsctWorkspace"
 }
-
-$specFile = Get-ChildItem -Path $xsctWorkspace -Recurse -File -Filter Xilinx.spec |
-    Where-Object { $_.DirectoryName -match 'standalone_ps7_cortexa9_0' } |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1
-if ($null -eq $specFile) {
-    throw "design_1 platform Xilinx.spec not found under $xsctWorkspace"
+$platformSwDir = Join-Path $fsblElf.DirectoryName "zynq_fsbl_bsp\ps7_cortexa9_0"
+if (-not (Test-Path $platformSwDir)) {
+    throw "design_1 fresh FSBL BSP processor root not found: $platformSwDir"
 }
-$platformSwDir = $specFile.DirectoryName
 
 & powershell -ExecutionPolicy Bypass -File $appBuildScript `
     -VitisRoot $VitisRoot `
@@ -120,6 +121,7 @@ if ($LASTEXITCODE -ne 0) {
 $bootgen = Resolve-BootgenExecutable -ConfiguredPath $BootgenPath
 Invoke-BootgenRead -BootBin $bootBinPath -Bootgen $bootgen -OutputPath $readbackPath
 $sha256 = (Get-FileHash -Path $bootBinPath -Algorithm SHA256).Hash
+$timingSummary = & $timingParserScript -ReportPath $design1TimingReport -Quiet
 
 $readme = @"
 AX7020 Repo-Owned design_1 UART Baseline
@@ -141,6 +143,14 @@ Fresh source chain:
 - Bitstream path: $bitstream
 - Platform SW dir: $platformSwDir
 - App ELF path: $appElf
+- Timing summary: $design1TimingReport
+- Timing status:
+  WNS = $($timingSummary.SetupWnsNs) ns
+  TNS = $($timingSummary.SetupTnsNs) ns
+  setup failing endpoints = $($timingSummary.SetupFailingEndpoints)
+  WHS = $($timingSummary.HoldWhsNs) ns
+  THS = $($timingSummary.HoldThsNs) ns
+  hold failing endpoints = $($timingSummary.HoldFailingEndpoints)
 - SHA256: $sha256
 
 Expected board-side behavior:

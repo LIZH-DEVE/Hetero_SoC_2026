@@ -6,6 +6,7 @@
 **/HCS_SOC.hw/
 **/HCS_SOC.ip_user_files/
 **/HCS_SOC.tmp/
+HCS_SOC/timing_triage/
 
 # --- 2. 拦截全局噪音文件 ---
 *.log

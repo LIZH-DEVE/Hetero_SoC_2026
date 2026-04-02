@@ -37,14 +37,18 @@ module network_stage1_path (
     output logic [3:0]  o_tx_axis_tkeep
 );
 
-    localparam int INJ_DEPTH = 64;
+    // Hybrid exact-fit smoke injects 11 header words plus 1024B payload.
+    // Keep enough headroom so the full frame can be staged before TLAST.
+    localparam int INJ_DEPTH = 512;
+    localparam int INJ_PTR_W = $clog2(INJ_DEPTH);
+    localparam int INJ_COUNT_W = $clog2(INJ_DEPTH + 1);
     localparam int TXCAP_DEPTH = 64;
 
     logic [31:0] inj_data_mem [0:INJ_DEPTH-1];
     logic        inj_last_mem [0:INJ_DEPTH-1];
-    logic [5:0]  inj_wr_ptr;
-    logic [5:0]  inj_rd_ptr;
-    logic [6:0]  inj_count;
+    logic [INJ_PTR_W-1:0]  inj_wr_ptr;
+    logic [INJ_PTR_W-1:0]  inj_rd_ptr;
+    logic [INJ_COUNT_W-1:0] inj_count;
     logic [15:0] inj_word_progress;
     logic        inj_overflow;
     logic        inj_done;
@@ -108,6 +112,12 @@ module network_stage1_path (
     logic        tx_last_sel;
     logic [3:0]  tx_keep_sel;
     logic        tx_ready_sel;
+    (* KEEP = "TRUE", DONT_TOUCH = "TRUE" *) logic [31:0] tx_pipe_data;
+    (* KEEP = "TRUE", DONT_TOUCH = "TRUE" *) logic        tx_pipe_valid;
+    (* KEEP = "TRUE", DONT_TOUCH = "TRUE" *) logic        tx_pipe_last;
+    (* KEEP = "TRUE", DONT_TOUCH = "TRUE" *) logic [3:0]  tx_pipe_keep;
+    logic        tx_pipe_pop;
+    logic        tx_pipe_ready;
 
     logic [31:0] txcap_data_mem [0:TXCAP_DEPTH-1];
     logic [3:0]  txcap_keep_mem [0:TXCAP_DEPTH-1];
@@ -144,7 +154,7 @@ module network_stage1_path (
     assign o_inject_tvalid = i_network_enable && i_ingress_inject_sel && inj_tvalid;
     assign o_inject_tlast = inj_tlast;
 
-    assign o_inj_status = {13'd0, inj_overflow, inj_done, (inj_count != 0), 9'd0, inj_count};
+    assign o_inj_status = {13'd0, inj_overflow, inj_done, (inj_count != 0), 16'(inj_count)};
     assign o_txcap_status = {13'd0, txcap_overflow, txcap_done, (txcap_count != 0), 9'd0, txcap_count};
     assign o_txcap_data = (txcap_count != 0) ? txcap_data_mem[txcap_rd_ptr] : 32'd0;
     assign o_debug_status = {
@@ -165,7 +175,11 @@ module network_stage1_path (
         i_network_enable
     };
 
-    assign tx_ready_sel = i_network_enable && (txcap_count < TXCAP_DEPTH);
+    // Single-beat egress register slice. This intentionally breaks the
+    // stage1_local_ip -> txcap_data_mem critical path before the capture RAM.
+    assign tx_pipe_pop = tx_pipe_valid && i_network_enable && (txcap_count < TXCAP_DEPTH);
+    assign tx_pipe_ready = i_network_enable && (!tx_pipe_valid || tx_pipe_pop);
+    assign tx_ready_sel = tx_pipe_ready;
 
     assign tx_data_sel  = arp_tx_tvalid ? arp_tx_tdata  : udp_tx_tdata;
     assign tx_valid_sel = arp_tx_tvalid ? arp_tx_tvalid : udp_tx_tvalid;
@@ -174,10 +188,33 @@ module network_stage1_path (
     assign arp_tx_tready = tx_ready_sel;
     assign udp_tx_tready = tx_ready_sel && !arp_tx_tvalid;
 
-    assign o_tx_axis_tdata  = tx_data_sel;
-    assign o_tx_axis_tvalid = i_network_enable && tx_valid_sel;
-    assign o_tx_axis_tlast  = i_network_enable && tx_last_sel;
-    assign o_tx_axis_tkeep  = tx_keep_sel;
+    assign o_tx_axis_tdata  = tx_pipe_data;
+    assign o_tx_axis_tvalid = i_network_enable && tx_pipe_valid;
+    assign o_tx_axis_tlast  = i_network_enable && tx_pipe_last;
+    assign o_tx_axis_tkeep  = tx_pipe_keep;
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            tx_pipe_data <= 32'd0;
+            tx_pipe_valid <= 1'b0;
+            tx_pipe_last <= 1'b0;
+            tx_pipe_keep <= 4'hF;
+        end else if (!i_network_enable || i_txcap_clear) begin
+            tx_pipe_data <= 32'd0;
+            tx_pipe_valid <= 1'b0;
+            tx_pipe_last <= 1'b0;
+            tx_pipe_keep <= 4'hF;
+        end else if (tx_valid_sel && tx_pipe_ready) begin
+            tx_pipe_data <= tx_data_sel;
+            tx_pipe_valid <= 1'b1;
+            tx_pipe_last <= tx_last_sel;
+            tx_pipe_keep <= tx_keep_sel;
+        end else if (tx_pipe_pop) begin
+            tx_pipe_valid <= 1'b0;
+            tx_pipe_last <= 1'b0;
+            tx_pipe_keep <= 4'hF;
+        end
+    end
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -210,8 +247,8 @@ module network_stage1_path (
                         inj_data_mem[inj_wr_ptr] <= i_inj_data;
                         inj_last_mem[inj_wr_ptr] <= (i_inj_expected_words != 16'd0) &&
                                                     (inj_word_progress + 16'd1 == i_inj_expected_words);
-                        inj_wr_ptr <= inj_wr_ptr + 6'd1;
-                        inj_count <= inj_count + 7'd1;
+                        inj_wr_ptr <= inj_wr_ptr + INJ_PTR_W'(1);
+                        inj_count <= inj_count + INJ_COUNT_W'(1);
                         if ((i_inj_expected_words != 16'd0) &&
                             (inj_word_progress + 16'd1 == i_inj_expected_words)) begin
                             inj_word_progress <= 16'd0;
@@ -228,8 +265,8 @@ module network_stage1_path (
 
                 if (inj_tvalid && inj_tready) begin
                     dbg_inj_fire_seen <= 1'b1;
-                    inj_rd_ptr <= inj_rd_ptr + 6'd1;
-                    inj_count <= inj_count - 7'd1;
+                    inj_rd_ptr <= inj_rd_ptr + INJ_PTR_W'(1);
+                    inj_count <= inj_count - INJ_COUNT_W'(1);
                     if (inj_tlast) begin
                         inj_packet_complete <= 1'b0;
                     end
@@ -288,15 +325,15 @@ module network_stage1_path (
                 dbg_txcap_write_seen <= 1'b0;
                 dbg_txcap_done_seen <= 1'b0;
             end else begin
-                if (tx_valid_sel && tx_ready_sel) begin
+                if (tx_pipe_pop) begin
                     dbg_txcap_write_seen <= 1'b1;
                     if (txcap_count < TXCAP_DEPTH) begin
-                        txcap_data_mem[txcap_wr_ptr] <= tx_data_sel;
-                        txcap_keep_mem[txcap_wr_ptr] <= tx_keep_sel;
-                        txcap_last_mem[txcap_wr_ptr] <= tx_last_sel;
+                        txcap_data_mem[txcap_wr_ptr] <= tx_pipe_data;
+                        txcap_keep_mem[txcap_wr_ptr] <= tx_pipe_keep;
+                        txcap_last_mem[txcap_wr_ptr] <= tx_pipe_last;
                         txcap_wr_ptr <= txcap_wr_ptr + 6'd1;
                         txcap_count <= txcap_count + 7'd1;
-                        if (tx_last_sel) begin
+                        if (tx_pipe_last) begin
                             txcap_done <= 1'b1;
                             dbg_txcap_done_seen <= 1'b1;
                         end

@@ -54,7 +54,9 @@ module pbm_controller #(
     assign o_high_water = high_water;
 
     // State/register update and pointer maintenance.
-    always_ff @(posedge clk or negedge rst_n) begin
+    // Keep PBM head state synchronous so BRAM write/read control pins are not
+    // sourced from async-reset registers.
+    always_ff @(posedge clk) begin
         if (!rst_n) begin
             state <= ALLOC_META;
             ptr_head_commit <= '0;
@@ -138,7 +140,7 @@ module pbm_controller #(
         end
     end
 
-    always_ff @(posedge clk or negedge rst_n) begin
+    always_ff @(posedge clk) begin
         if (!rst_n) begin
             ptr_tail <= '0;
             o_rd_valid <= 1'b0;

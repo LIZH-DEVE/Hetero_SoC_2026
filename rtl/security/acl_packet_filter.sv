@@ -5,7 +5,7 @@
 
 /**
  * Module: acl_packet_filter
- * - Collect first up to 7 words per packet and build a semantic
+ * - Collect first up to 10 words per packet and build a semantic
  *   {protocol, src_ip, src_port, dst_ip, dst_port} ACL tuple
  * - Query acl_match_engine
  * - Hit => drop full packet; miss => forward full packet
@@ -55,7 +55,7 @@ module acl_packet_filter #(
         ST_DROP
     } state_t;
 
-    localparam int ACL_HEADER_WORDS = 7;
+    localparam int ACL_HEADER_WORDS = 10;
     localparam int CAP_CNT_W = $clog2(ACL_HEADER_WORDS + 1);
     localparam int FLUSH_IDX_W = (ACL_HEADER_WORDS <= 1) ? 1 : $clog2(ACL_HEADER_WORDS);
 
@@ -82,14 +82,17 @@ module acl_packet_filter #(
     assign out_fire = m_tvalid && m_tready;
 
     always_comb begin
-        // This tuple layout matches the simplified IPv4 7-word header contract.
-        // If ACL_HEADER_WORDS changes, the field extraction offsets below must be reviewed.
+        // Shadow inject feeds a fixed internal frame with:
+        //   word 6  = {ttl, protocol, checksum}
+        //   word 7  = src_ip
+        //   word 8  = dst_ip
+        //   word 9  = {dst_port, src_port}
         acl_tuple = {
-            buf_data[3][23:16],
-            buf_data[4],
-            buf_data[6][31:16],
-            buf_data[5],
-            buf_data[6][15:0]
+            buf_data[6][23:16],
+            buf_data[7],
+            buf_data[9][15:0],
+            buf_data[8],
+            buf_data[9][31:16]
         };
     end
 
@@ -152,7 +155,9 @@ module acl_packet_filter #(
         endcase
     end
 
-    always_ff @(posedge clk or negedge rst_n) begin
+    // Keep packet state/control synchronous to avoid BRAM/FIFO control being
+    // sourced by async-reset state flops.
+    always_ff @(posedge clk) begin
         if (!rst_n) begin
             state <= ST_IDLE;
             cap_cnt <= '0;

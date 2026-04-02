@@ -2,14 +2,11 @@
 
 module tb_dma_desc_fetcher_doorbell_sanity;
 
-    localparam DESC_STRIDE_BYTES = 32;
-    localparam DESC_CSW_OFFSET   = 16;
-    localparam CTRL_ALGO_BIT     = 31;
-    localparam CSW_OWNER_BIT     = 31;
-    localparam CSW_DONE_BIT      = 30;
+    import dma_csr_pkg::*;
 
     logic clk;
     logic rst_n;
+    logic i_soft_reset;
     logic [31:0] i_ring_base;
     logic [31:0] i_ring_size;
     logic        i_ring_doorbell;
@@ -17,11 +14,15 @@ module tb_dma_desc_fetcher_doorbell_sanity;
     logic [15:0] o_hw_head_ptr;
     logic        o_dma_start;
     logic [31:0] o_dma_addr;
+    logic [31:0] o_dma_src_addr;
     logic [31:0] o_dma_len;
     logic        o_dma_algo;
+    logic        o_dma_stream_tlast;
+    logic [31:0] i_dma_actual_len;
     logic        i_dma_done;
     logic        i_dma_error;
     logic [1:0]  i_dma_bresp;
+    logic        o_completion_event;
     logic [31:0] m_axi_araddr;
     logic [7:0]  m_axi_arlen;
     logic [2:0]  m_axi_arsize;
@@ -53,6 +54,7 @@ module tb_dma_desc_fetcher_doorbell_sanity;
     dma_desc_fetcher dut (
         .clk(clk),
         .rst_n(rst_n),
+        .i_soft_reset(i_soft_reset),
         .i_ring_base(i_ring_base),
         .i_ring_size(i_ring_size),
         .i_ring_doorbell(i_ring_doorbell),
@@ -60,11 +62,15 @@ module tb_dma_desc_fetcher_doorbell_sanity;
         .o_hw_head_ptr(o_hw_head_ptr),
         .o_dma_start(o_dma_start),
         .o_dma_addr(o_dma_addr),
+        .o_dma_src_addr(o_dma_src_addr),
         .o_dma_len(o_dma_len),
         .o_dma_algo(o_dma_algo),
+        .o_dma_stream_tlast(o_dma_stream_tlast),
         .i_dma_done(i_dma_done),
         .i_dma_error(i_dma_error),
         .i_dma_bresp(i_dma_bresp),
+        .i_dma_actual_len(i_dma_actual_len),
+        .o_completion_event(o_completion_event),
         .m_axi_araddr(m_axi_araddr),
         .m_axi_arlen(m_axi_arlen),
         .m_axi_arsize(m_axi_arsize),
@@ -126,7 +132,7 @@ module tb_dma_desc_fetcher_doorbell_sanity;
             m_axi_rlast  <= 1'b0;
             @(posedge clk);
 
-            m_axi_rdata  <= (32'h1 << CSW_OWNER_BIT);
+            m_axi_rdata  <= DMA_DESC_CSW_OWNER;
             m_axi_rlast  <= 1'b1;
             @(posedge clk);
 
@@ -136,14 +142,17 @@ module tb_dma_desc_fetcher_doorbell_sanity;
         end
     endtask
 
-    task automatic respond_writeback;
+    task automatic respond_writeback(
+        input [31:0] expected_addr,
+        input [31:0] expected_data
+    );
         begin
             m_axi_awready <= 1'b1;
             do @(posedge clk); while (!m_axi_awvalid);
             if (m_axi_awlen !== 8'd0) begin
                 $fatal(1, "write-back must be single word");
             end
-            if (m_axi_awaddr !== (i_ring_base + DESC_CSW_OFFSET)) begin
+            if (m_axi_awaddr !== expected_addr) begin
                 $fatal(1, "write-back address mismatch: got=%08h", m_axi_awaddr);
             end
             @(posedge clk);
@@ -157,8 +166,14 @@ module tb_dma_desc_fetcher_doorbell_sanity;
             if (!m_axi_wlast) begin
                 $fatal(1, "write-back must assert WLAST");
             end
-            if (m_axi_wdata !== (32'h1 << CSW_DONE_BIT)) begin
-                $fatal(1, "write-back CSW mismatch: got=%08h", m_axi_wdata);
+            if (m_axi_wdata !== expected_data) begin
+                $fatal(1,
+                       "write-back data mismatch: got=%08h exp=%08h desc_ctrl=%08h dma_status=%08h stream=%0b",
+                       m_axi_wdata,
+                       expected_data,
+                       dut.desc_word2_ctrl,
+                       dut.dma_status_word,
+                       o_dma_stream_tlast);
             end
             @(posedge clk);
             m_axi_wready <= 1'b0;
@@ -174,10 +189,12 @@ module tb_dma_desc_fetcher_doorbell_sanity;
 
     initial begin
         rst_n = 1'b0;
+        i_soft_reset = 1'b0;
         i_ring_base = 32'h1000_0000;
         i_ring_size = 32'd4;
         i_ring_doorbell = 1'b0;
         i_sw_tail_ptr = 16'd1;
+        i_dma_actual_len = 32'h0000_0040;
         i_dma_done = 1'b0;
         i_dma_error = 1'b0;
         i_dma_bresp = 2'b00;
@@ -202,7 +219,7 @@ module tb_dma_desc_fetcher_doorbell_sanity;
         @(posedge clk);
         i_ring_doorbell = 1'b0;
 
-        send_descriptor(32'h2000_0000, 32'h8000_0040);
+        send_descriptor(32'h2000_0000, DMA_DESC_CTRL_ALGO | 32'h0000_0040);
 
         do @(posedge clk); while (!o_dma_start);
         if (o_dma_addr !== 32'h2000_0000) begin
@@ -214,13 +231,30 @@ module tb_dma_desc_fetcher_doorbell_sanity;
         if (o_dma_algo !== 1'b1) begin
             $fatal(1, "decoded algo mismatch");
         end
+        if (o_dma_stream_tlast !== 1'b0) begin
+            $fatal(1, "fixed-length descriptor must not raise stream_tlast");
+        end
 
         i_dma_done = 1'b1;
         @(posedge clk);
         i_dma_done = 1'b0;
 
-        respond_writeback();
+        respond_writeback(i_ring_base + DMA_DESC_ACTUAL_LEN_BYTE_OFFSET, i_dma_actual_len);
+        repeat (2) @(posedge clk);
+        if (o_completion_event !== 1'b0) begin
+            $fatal(1, "completion event must wait for the final CSW write-back response");
+        end
+        if (o_hw_head_ptr !== 16'd0) begin
+            $fatal(1, "head pointer must not advance until the final CSW write-back response");
+        end
+        if (o_wb_active !== 1'b1) begin
+            $fatal(1, "write-back path should remain active between actual_len and CSW write-back");
+        end
+        respond_writeback(i_ring_base + DMA_DESC_CSW_BYTE_OFFSET, DMA_DESC_CSW_DONE);
         repeat (4) @(posedge clk);
+        if (o_completion_event !== 1'b0) begin
+            $fatal(1, "completion event should be a pulse");
+        end
 
         if (o_hw_head_ptr !== 16'd1) begin
             $fatal(1, "head pointer did not advance after completed fetch");
@@ -230,6 +264,49 @@ module tb_dma_desc_fetcher_doorbell_sanity;
         end
         if (m_axi_arvalid !== 1'b0) begin
             $fatal(1, "fetcher should quiesce again once head catches tail");
+        end
+
+        i_soft_reset = 1'b1;
+        @(posedge clk);
+        i_soft_reset = 1'b0;
+        repeat (4) @(posedge clk);
+        if (o_wb_active !== 1'b0) begin
+            $fatal(1, "write-back state should clear on soft reset");
+        end
+        if (o_hw_head_ptr !== 16'd0) begin
+            $fatal(1, "soft reset should clear the fetcher head pointer");
+        end
+
+        i_ring_doorbell = 1'b1;
+        @(posedge clk);
+        i_ring_doorbell = 1'b0;
+
+        send_descriptor(32'h2000_0000, DMA_DESC_CTRL_ALGO | DMA_DESC_CTRL_STREAM_TLAST | 32'h0000_0040);
+        do @(posedge clk); while (!o_dma_start);
+        if (o_dma_stream_tlast !== 1'b1) begin
+            $fatal(1, "stream_tlast hook must decode descriptor bit 30");
+        end
+        wait (dut.state == dut.EXEC_WAIT);
+        i_dma_actual_len = 32'h0000_0020;
+        i_dma_error = 1'b1;
+        i_dma_bresp = 2'b00;
+        respond_writeback(i_ring_base + DMA_DESC_ACTUAL_LEN_BYTE_OFFSET, i_dma_actual_len);
+        i_dma_error = 1'b0;
+        i_dma_bresp = 2'b00;
+        repeat (2) @(posedge clk);
+        if (o_completion_event !== 1'b0) begin
+            $fatal(1, "stream error completion must still wait for the final CSW write-back response");
+        end
+        if (o_hw_head_ptr !== 16'd0) begin
+            $fatal(1, "stream error path must not advance the head pointer before the final CSW write-back");
+        end
+        respond_writeback(
+            i_ring_base + DMA_DESC_CSW_BYTE_OFFSET,
+            DMA_DESC_CSW_DONE | DMA_DESC_CSW_ERR | DMA_DESC_CSW_STS_OVERFLOW_OR_MISSING_TLAST
+        );
+        repeat (4) @(posedge clk);
+        if (o_hw_head_ptr !== 16'd1) begin
+            $fatal(1, "stream error path must advance the head pointer after the final CSW write-back");
         end
 
         $display("PASS: dma_desc_fetcher honors doorbell-gated fetch");

@@ -2,7 +2,8 @@
 
 module crypto_dma_subsystem #(
     parameter ADDR_WIDTH = 32,
-    parameter DATA_WIDTH = 32
+    parameter DATA_WIDTH = 32,
+    parameter CRYPTO_NUM_INSTANCES = 1
 )(
     input  logic                   clk,
     input  logic                   rst_n,
@@ -115,11 +116,15 @@ module crypto_dma_subsystem #(
     // =========================================================================
     // Internal Signals
     // =========================================================================
-    logic                   csr_start, fetcher_start, final_start;
-    (* mark_debug = "true" *) logic [31:0]            csr_addr, fetcher_addr, final_addr;
+    logic                   csr_start, fetcher_start, final_start, source_reader_start;
+    logic                   csr_soft_reset;
+    logic                   fetcher_completion_event_unused;
+    logic                   fetcher_stream_tlast_unused;
+    (* mark_debug = "true" *) logic [31:0]            csr_addr, fetcher_addr, fetcher_src_addr, final_addr;
     (* mark_debug = "true" *) logic [31:0]            csr_len, fetcher_len, final_len;
     (* mark_debug = "true" *) logic                   csr_algo, fetcher_algo, final_algo;
     logic                   csr_encdec;  // Encrypt/Decrypt control from CSR
+    logic                   ring_doorbell;
     logic [31:0]            ring_base, ring_size;
     logic [15:0]            sw_tail, hw_head;
     logic                   dma_done, dma_error, dma_busy, hw_init;
@@ -138,6 +143,34 @@ module crypto_dma_subsystem #(
     (* mark_debug = "true" *) logic                   pbm_empty;
     (* mark_debug = "true" *) logic                   bridge_rd_pbm;
     (* mark_debug = "true" *) logic                   bridge_rd_valid;
+    logic [31:0]                                     crypto_src_data;
+    logic                                            crypto_src_empty;
+    logic                                            crypto_src_valid;
+    logic                                            crypto_src_rd_en;
+    logic                                            use_desc_source;
+
+    // Descriptor-driven source reader signals
+    logic [31:0]                                     source_rd_data;
+    logic                                            source_rd_empty;
+    logic                                            source_rd_valid;
+    logic                                            source_rd_en;
+    logic                                            source_done;
+    logic                                            source_error;
+    logic [1:0]                                      source_last_rresp;
+    logic [31:0]                                     source_bytes_fetched;
+    logic [31:0]                                     source_bytes_delivered;
+    logic [7:0]                                      source_debug_state;
+    logic [ADDR_WIDTH-1:0]                           source_araddr;
+    logic [7:0]                                      source_arlen;
+    logic [2:0]                                      source_arsize;
+    logic [1:0]                                      source_arburst;
+    logic                                            source_arvalid;
+    logic                                            source_arready;
+    logic [DATA_WIDTH-1:0]                           source_rdata;
+    logic [1:0]                                      source_rresp;
+    logic                                            source_rlast;
+    logic                                            source_rvalid;
+    logic                                            source_rready;
 
     // Crypto Bridge signals
     (* mark_debug = "true" *) logic [31:0]            crypto_to_dma_data;
@@ -192,7 +225,39 @@ module crypto_dma_subsystem #(
     logic [2:0]             s2mm_arsize;
     logic [1:0]             s2mm_arburst;
     logic                   s2mm_arvalid, s2mm_rready;
+    logic [31:0]            s2mm_rdata_in;
     logic [1:0]             s2mm_rresp;
+    logic                   s2mm_rvalid_in;
+    logic                   s2mm_rlast_in;
+
+    // Combined DMA status for fetcher/CSR
+    logic                   sink_done;
+    logic                   sink_error;
+    logic [1:0]             sink_bresp;
+    logic [31:0]            dma_actual_len;
+    logic [31:0]            sink_bytes_written;
+    logic [7:0]             sink_debug_state;
+    logic [31:0]            csr_debug_status;
+    logic [31:0]            csr_debug_source_progress;
+    logic [31:0]            csr_debug_sink_progress;
+    logic [127:0]           bridge_debug_last_plaintext;
+    logic [127:0]           bridge_debug_key_lo_active;
+    logic                   source_error_sticky_q;
+    logic                   sink_error_sticky_q;
+    logic                   source_done_sticky_q;
+    logic                   sink_done_sticky_q;
+    logic [1:0]             debug_source_rresp_q;
+    logic [1:0]             debug_sink_bresp_q;
+    logic [7:0]             source_debug_state_sticky_q;
+    logic [7:0]             sink_debug_state_sticky_q;
+    logic [31:0]            source_progress_sticky_q;
+    logic [31:0]            sink_progress_sticky_q;
+
+    function automatic [31:0] dma_sink_word_order(input [31:0] value);
+        begin
+            dma_sink_word_order = {value[7:0], value[15:8], value[23:16], value[31:24]};
+        end
+    endfunction
 
     // =========================================================================
     // 1. Loopback MUX (Mode Selection)
@@ -205,28 +270,28 @@ module crypto_dma_subsystem #(
     always_comb begin
         case (loopback_mode)
             2'b00: begin  // Normal mode
-                muxed_crypto_data = crypto_to_dma_data;
+                muxed_crypto_data = dma_sink_word_order(crypto_to_dma_data);
                 muxed_crypto_empty = crypto_to_dma_empty;
                 tx_data_from_crypto = crypto_to_dma_data;
                 tx_valid_from_crypto = !crypto_to_dma_empty;
                 tx_last_from_crypto = crypto_to_dma_last;
             end
             2'b01: begin  // DDR Loopback mode
-                muxed_crypto_data = crypto_to_dma_data;
+                muxed_crypto_data = dma_sink_word_order(crypto_to_dma_data);
                 muxed_crypto_empty = crypto_to_dma_empty;
                 tx_data_from_crypto = 32'b0;
                 tx_valid_from_crypto = 1'b0;
                 tx_last_from_crypto = 1'b0;
             end
             2'b10: begin  // PBM Passthrough mode
-                muxed_crypto_data = crypto_to_dma_data;
+                muxed_crypto_data = dma_sink_word_order(crypto_to_dma_data);
                 muxed_crypto_empty = crypto_to_dma_empty;
                 tx_data_from_crypto = crypto_to_dma_data;
                 tx_valid_from_crypto = !crypto_to_dma_empty;
                 tx_last_from_crypto = crypto_to_dma_last;
             end
             default: begin  // Default to Normal mode
-                muxed_crypto_data = crypto_to_dma_data;
+                muxed_crypto_data = dma_sink_word_order(crypto_to_dma_data);
                 muxed_crypto_empty = crypto_to_dma_empty;
                 tx_data_from_crypto = 32'b0;
                 tx_valid_from_crypto = 1'b0;
@@ -246,6 +311,88 @@ module crypto_dma_subsystem #(
                          ((ring_size > 0) ? fetcher_len : csr_len) : 32'b0;
     assign final_algo  = (loopback_mode == 2'b00) ? 
                          ((ring_size > 0) ? fetcher_algo : csr_algo) : 1'b0;
+    assign use_desc_source = (loopback_mode == 2'b00) && (ring_size > 0);
+    assign source_reader_start = final_start && use_desc_source;
+
+    assign crypto_src_data = use_desc_source ? source_rd_data : pbm_data;
+    assign crypto_src_empty = use_desc_source ? source_rd_empty : pbm_empty;
+    assign crypto_src_valid = use_desc_source ? source_rd_valid : bridge_rd_valid;
+    assign source_rd_en = use_desc_source ? crypto_src_rd_en : 1'b0;
+    assign bridge_rd_pbm = use_desc_source ? 1'b0 : crypto_src_rd_en;
+    assign dma_done = sink_done;
+    assign dma_error = sink_error || source_error;
+    assign dma_status_bresp = sink_bresp;
+    assign dma_actual_len = sink_done ? final_len : 32'd0;
+    assign csr_debug_status = {
+        16'd0,
+        sink_debug_state_sticky_q,
+        source_debug_state_sticky_q,
+        debug_sink_bresp_q,
+        debug_source_rresp_q,
+        sink_done_sticky_q,
+        source_done_sticky_q,
+        sink_error_sticky_q,
+        source_error_sticky_q
+    };
+    assign csr_debug_source_progress = source_progress_sticky_q;
+    assign csr_debug_sink_progress = sink_progress_sticky_q;
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            source_error_sticky_q <= 1'b0;
+            sink_error_sticky_q <= 1'b0;
+            source_done_sticky_q <= 1'b0;
+            sink_done_sticky_q <= 1'b0;
+            debug_source_rresp_q <= 2'b00;
+            debug_sink_bresp_q <= 2'b00;
+            source_debug_state_sticky_q <= 8'd0;
+            sink_debug_state_sticky_q <= 8'd0;
+            source_progress_sticky_q <= 32'd0;
+            sink_progress_sticky_q <= 32'd0;
+        end else if (csr_soft_reset || ring_doorbell) begin
+            source_error_sticky_q <= 1'b0;
+            sink_error_sticky_q <= 1'b0;
+            source_done_sticky_q <= 1'b0;
+            sink_done_sticky_q <= 1'b0;
+            debug_source_rresp_q <= 2'b00;
+            debug_sink_bresp_q <= 2'b00;
+            source_debug_state_sticky_q <= 8'd0;
+            sink_debug_state_sticky_q <= 8'd0;
+            source_progress_sticky_q <= 32'd0;
+            sink_progress_sticky_q <= 32'd0;
+        end else begin
+            if (source_rvalid && source_rready) begin
+                debug_source_rresp_q <= source_rresp;
+            end
+            if (source_error) begin
+                source_error_sticky_q <= 1'b1;
+                debug_source_rresp_q <= source_rresp;
+            end
+            if (sink_error) begin
+                sink_error_sticky_q <= 1'b1;
+                debug_sink_bresp_q <= sink_bresp;
+            end
+            if (source_done) begin
+                source_done_sticky_q <= 1'b1;
+            end
+            if (sink_done) begin
+                sink_done_sticky_q <= 1'b1;
+                debug_sink_bresp_q <= sink_bresp;
+            end
+            if (source_debug_state != 8'd0) begin
+                source_debug_state_sticky_q <= source_debug_state;
+            end
+            if (sink_debug_state != 8'd0) begin
+                sink_debug_state_sticky_q <= sink_debug_state;
+            end
+            if (source_bytes_fetched > source_progress_sticky_q) begin
+                source_progress_sticky_q <= source_bytes_fetched;
+            end
+            if (sink_bytes_written > sink_progress_sticky_q) begin
+                sink_progress_sticky_q <= sink_bytes_written;
+            end
+        end
+    end
 
     // =========================================================================
     // 3. AXI Master Interface Connections
@@ -296,12 +443,21 @@ module crypto_dma_subsystem #(
     assign m_axis_s2mm_bready = s2mm_bready;
 
     // S2MM/MM2S Read Channel
-    assign m_axis_s2mm_araddr = s2mm_araddr;
-    assign m_axis_s2mm_arlen = s2mm_arlen;
-    assign m_axis_s2mm_arsize = s2mm_arsize;
-    assign m_axis_s2mm_arburst = s2mm_arburst;
-    assign m_axis_s2mm_arvalid = s2mm_arvalid;
-    assign m_axis_s2mm_rready = s2mm_rready;
+    assign m_axis_s2mm_araddr = use_desc_source ? source_araddr : s2mm_araddr;
+    assign m_axis_s2mm_arlen = use_desc_source ? source_arlen : s2mm_arlen;
+    assign m_axis_s2mm_arsize = use_desc_source ? source_arsize : s2mm_arsize;
+    assign m_axis_s2mm_arburst = use_desc_source ? source_arburst : s2mm_arburst;
+    assign m_axis_s2mm_arvalid = use_desc_source ? source_arvalid : s2mm_arvalid;
+    assign m_axis_s2mm_rready = use_desc_source ? source_rready : s2mm_rready;
+    assign source_arready = use_desc_source ? m_axis_s2mm_arready : 1'b0;
+    assign source_rdata = use_desc_source ? m_axis_s2mm_rdata : 32'd0;
+    assign source_rresp = use_desc_source ? m_axis_s2mm_rresp : 2'b00;
+    assign source_rlast = use_desc_source ? m_axis_s2mm_rlast : 1'b0;
+    assign source_rvalid = use_desc_source ? m_axis_s2mm_rvalid : 1'b0;
+    assign s2mm_rdata_in = use_desc_source ? 32'd0 : m_axis_s2mm_rdata;
+    assign s2mm_rresp = use_desc_source ? 2'b00 : m_axis_s2mm_rresp;
+    assign s2mm_rlast_in = use_desc_source ? 1'b0 : m_axis_s2mm_rlast;
+    assign s2mm_rvalid_in = use_desc_source ? 1'b0 : m_axis_s2mm_rvalid;
 
     // =========================================================================
     // 4. TX Output Interface
@@ -337,15 +493,39 @@ module crypto_dma_subsystem #(
         .s_axil_araddr(s_axil_araddr), .s_axil_arvalid(s_axil_arvalid), .s_axil_arready(s_axil_arready),
         .s_axil_rdata(s_axil_rdata), .s_axil_rresp(s_axil_rresp), .s_axil_rvalid(s_axil_rvalid), .s_axil_rready(s_axil_rready),
         .o_start(csr_start), .o_base_addr(csr_addr), .o_len(csr_len),
+        .o_soft_reset(csr_soft_reset),
+        .o_ring_doorbell(ring_doorbell),
         .o_ring_base(ring_base), .o_ring_size(ring_size),
         .o_sw_tail_ptr(sw_tail), .i_hw_head_ptr(hw_head),
-        .i_done(dma_done), .i_error(dma_error), .i_busy(dma_busy), .o_algo_sel(csr_algo),
-        .o_enc_dec(csr_encdec),
+        .o_irq_enable(), .o_irq_ack(), .o_irq_coalesce_count(), .o_irq_coalesce_timeout(), .i_irq_status(32'd0),
+          .i_debug_status(csr_debug_status),
+          .i_debug_source_progress(csr_debug_source_progress),
+          .i_debug_sink_progress(csr_debug_sink_progress),
+          .i_debug_plaintext_word0(bridge_debug_last_plaintext[127:96]),
+          .i_debug_plaintext_word1(bridge_debug_last_plaintext[95:64]),
+          .i_debug_plaintext_word2(bridge_debug_last_plaintext[63:32]),
+          .i_debug_plaintext_word3(bridge_debug_last_plaintext[31:0]),
+          .i_debug_key_word0(bridge_debug_key_lo_active[127:96]),
+          .i_debug_key_word1(bridge_debug_key_lo_active[95:64]),
+          .i_debug_key_word2(bridge_debug_key_lo_active[63:32]),
+          .i_debug_key_word3(bridge_debug_key_lo_active[31:0]),
+          .i_done(dma_done), .i_error(dma_error), .i_busy(dma_busy), .o_algo_sel(csr_algo),
+          .o_enc_dec(csr_encdec),
         .o_hw_init(hw_init), .o_key(csr_key), .o_key_hi(csr_key_hi), .o_aes256_en(csr_aes256_en),
         .i_acl_inc(1'b0), .o_acl_cnt(),
         .o_s2mm_en(s2mm_en), .o_mm2s_en(mm2s_en),
         .o_s2mm_addr(s2mm_addr), .o_s2mm_data(s2mm_data),
-        .o_loopback_mode(loopback_mode)
+        .o_loopback_mode(loopback_mode),
+        .i_inj_status(32'd0),
+        .i_txcap_status(32'd0),
+        .i_txcap_data(32'd0),
+        .i_netdbg_status(32'd0),
+        .i_net_applied_cfg0(32'd0),
+        .i_net_applied_local_ip(32'd0),
+        .i_net_applied_local_mac_lo(32'd0),
+        .i_net_applied_local_mac_hi(32'd0),
+        .i_drop_wrong_port_count(32'd0),
+        .i_drop_unaligned_count(32'd0)
     );
 
     // S2MM/MM2S Engine (Task 11.1/11.2)
@@ -367,17 +547,21 @@ module crypto_dma_subsystem #(
         .m_axis_araddr(s2mm_araddr), .m_axis_arlen(s2mm_arlen),
         .m_axis_arsize(s2mm_arsize), .m_axis_arburst(s2mm_arburst),
         .m_axis_arvalid(s2mm_arvalid), .m_axis_arready(m_axis_s2mm_arready),
-        .m_axis_rdata(m_axis_s2mm_rdata), .m_axis_rresp(s2mm_rresp),
-        .m_axis_rlast(m_axis_s2mm_rlast), .m_axis_rvalid(m_axis_s2mm_rvalid), .m_axis_rready(s2mm_rready)
+        .m_axis_rdata(s2mm_rdata_in), .m_axis_rresp(s2mm_rresp),
+        .m_axis_rlast(s2mm_rlast_in), .m_axis_rvalid(s2mm_rvalid_in), .m_axis_rready(s2mm_rready)
     );
 
     dma_desc_fetcher #(.ADDR_WIDTH(ADDR_WIDTH)) u_fetcher (
-        .clk(clk), .rst_n(rst_n),
-        .i_ring_base(ring_base), .i_ring_size(ring_size), .i_ring_doorbell(1'b1),
+        .clk(clk), .rst_n(rst_n), .i_soft_reset(csr_soft_reset),
+        .i_ring_base(ring_base), .i_ring_size(ring_size), .i_ring_doorbell(ring_doorbell),
         .i_sw_tail_ptr(sw_tail), .o_hw_head_ptr(hw_head),
         .o_dma_start(fetcher_start), .o_dma_addr(fetcher_addr),
+        .o_dma_src_addr(fetcher_src_addr),
         .o_dma_len(fetcher_len), .o_dma_algo(fetcher_algo),
+        .o_dma_stream_tlast(fetcher_stream_tlast_unused),
         .i_dma_done(dma_done), .i_dma_error(dma_error), .i_dma_bresp(dma_status_bresp),
+        .i_dma_actual_len(dma_actual_len),
+        .o_completion_event(fetcher_completion_event_unused),
         .m_axi_araddr(m_axis_fetcher_araddr), .m_axi_arlen(m_axis_fetcher_arlen),
         .m_axi_arsize(m_axis_fetcher_arsize), .m_axi_arburst(m_axis_fetcher_arburst),
         .m_axi_arvalid(m_axis_fetcher_arvalid), .m_axi_arready(m_axis_fetcher_arready),
@@ -394,6 +578,36 @@ module crypto_dma_subsystem #(
         .o_wb_active(fetch_wb_active)
     );
 
+    dma_crypto_source_reader #(.ADDR_WIDTH(ADDR_WIDTH), .DATA_WIDTH(DATA_WIDTH)) u_dma_crypto_source_reader (
+        .clk(clk), .rst_n(rst_n),
+        .i_soft_reset(csr_soft_reset),
+        .i_start(source_reader_start),
+        .i_src_addr(fetcher_src_addr),
+        .i_total_len(final_len),
+        .o_rd_data(source_rd_data),
+        .o_rd_valid(source_rd_valid),
+        .o_rd_empty(source_rd_empty),
+        .i_rd_en(source_rd_en),
+        .o_done(source_done),
+        .o_error(source_error),
+        .o_busy(),
+        .o_debug_last_rresp(source_last_rresp),
+        .o_debug_bytes_fetched(source_bytes_fetched),
+        .o_debug_bytes_delivered(source_bytes_delivered),
+        .o_debug_state(source_debug_state),
+        .m_axi_araddr(source_araddr),
+        .m_axi_arlen(source_arlen),
+        .m_axi_arsize(source_arsize),
+        .m_axi_arburst(source_arburst),
+        .m_axi_arvalid(source_arvalid),
+        .m_axi_arready(source_arready),
+        .m_axi_rdata(source_rdata),
+        .m_axi_rresp(source_rresp),
+        .m_axi_rlast(source_rlast),
+        .m_axi_rvalid(source_rvalid),
+        .m_axi_rready(source_rready)
+    );
+
     // PBM Controller
     pbm_controller #(.PBM_ADDR_WIDTH(14), .DATA_WIDTH(DATA_WIDTH)) u_pbm (
         .clk(clk), .rst_n(rst_n),
@@ -402,16 +616,20 @@ module crypto_dma_subsystem #(
     );
 
     // Crypto Bridge
-    crypto_bridge_top u_crypto_bridge (
+    crypto_bridge_top #(
+        .NUM_INSTANCES(CRYPTO_NUM_INSTANCES)
+    ) u_crypto_bridge (
         .clk(clk), .rst_n(rst_n),
-        .i_algo_sel(final_algo),
-        .i_encdec(csr_encdec),
-        .i_aes256_en(csr_aes256_en),
-        .i_key(csr_key),
-        .i_key_hi(csr_key_hi),
-        .o_system_ready(),
-        .i_pbm_data(pbm_data), .i_pbm_empty(pbm_empty), .i_pbm_valid(bridge_rd_valid),
-        .o_pbm_rd_en(bridge_rd_pbm),
+          .i_algo_sel(final_algo),
+          .i_encdec(csr_encdec),
+          .i_aes256_en(csr_aes256_en),
+          .i_key(csr_key),
+          .i_key_hi(csr_key_hi),
+          .o_system_ready(),
+          .o_debug_last_plaintext(bridge_debug_last_plaintext),
+          .o_debug_key_lo_active(bridge_debug_key_lo_active),
+          .i_pbm_data(crypto_src_data), .i_pbm_empty(crypto_src_empty), .i_pbm_valid(crypto_src_valid),
+          .o_pbm_rd_en(crypto_src_rd_en),
         .o_tx_data(crypto_to_dma_data),
         .o_tx_last(crypto_to_dma_last),
         .o_tx_empty(crypto_to_dma_empty),
@@ -423,9 +641,11 @@ module crypto_dma_subsystem #(
         .i_start(final_start),
         .i_base_addr(final_addr),
         .i_total_len(final_len),
-        .o_done(dma_done),
-        .o_error(dma_error),
-        .o_bresp(dma_status_bresp),
+        .o_done(sink_done),
+        .o_error(sink_error),
+        .o_bresp(sink_bresp),
+        .o_debug_bytes_written(sink_bytes_written),
+        .o_debug_state(sink_debug_state),
         .i_fifo_rdata(muxed_crypto_data),
         .i_fifo_empty(muxed_crypto_empty),
         .o_fifo_ren(dma_req_rd),
