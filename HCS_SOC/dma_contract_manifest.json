@@ -1,0 +1,215 @@
+{
+  "contract_version": 2,
+  "name": "low_lut_raw_copy_dma",
+  "csr": {
+    "offsets": {
+      "CTRL": 0,
+      "STATUS": 4,
+      "CACHE_CTRL": 64,
+      "LOOPBACK_MODE": 72,
+      "RING_DOORBELL": 76,
+      "RING_BASE": 80,
+      "RING_HW_HEAD": 84,
+      "RING_SW_TAIL": 88,
+      "RING_SIZE": 92,
+      "IRQ_ENABLE": 96,
+      "IRQ_STATUS": 100,
+      "IRQ_ACK": 104,
+      "IRQ_COALESCE_COUNT": 108,
+      "IRQ_COALESCE_TIMEOUT": 112,
+      "DEBUG_STATUS": 212,
+      "DEBUG_SOURCE_PROGRESS": 216,
+      "DEBUG_SINK_PROGRESS": 220,
+      "DEBUG_PLAINTEXT_WORD0": 224,
+      "DEBUG_PLAINTEXT_WORD1": 228,
+      "DEBUG_PLAINTEXT_WORD2": 232,
+      "DEBUG_PLAINTEXT_WORD3": 236,
+      "DEBUG_KEY_WORD0": 240,
+      "DEBUG_KEY_WORD1": 244,
+      "DEBUG_KEY_WORD2": 248,
+      "DEBUG_KEY_WORD3": 252
+    },
+    "ctrl_bits": {
+      "START": 0,
+      "HW_INIT": 1,
+      "ALGO_SM4": 2,
+      "ENCRYPT": 3,
+      "S2MM_EN": 4,
+      "MM2S_EN": 5,
+      "AUTH_EN": 6,
+      "ACL_EN": 7,
+      "DNA_LOCK_EN": 8,
+      "SOFT_RESET": 10
+    },
+    "write_values": {
+      "RING_DOORBELL_KICK": 1
+    }
+  },
+  "descriptor": {
+    "size_bytes": 32,
+    "word_bytes": 4,
+    "fields": [
+      {
+        "name": "DST_ADDR",
+        "byte_offset": 0,
+        "ctype": "uint32_t",
+        "sv_type": "logic [31:0]"
+      },
+      {
+        "name": "SRC_ADDR",
+        "byte_offset": 4,
+        "ctype": "uint32_t",
+        "sv_type": "logic [31:0]"
+      },
+      {
+        "name": "CTRL_LEN_ALGO",
+        "byte_offset": 8,
+        "ctype": "uint32_t",
+        "sv_type": "logic [31:0]"
+      },
+      {
+        "name": "RESERVED0",
+        "byte_offset": 12,
+        "ctype": "uint32_t",
+        "sv_type": "logic [31:0]"
+      },
+      {
+        "name": "CSW",
+        "byte_offset": 16,
+        "ctype": "uint32_t",
+        "sv_type": "logic [31:0]"
+      },
+      {
+        "name": "ACTUAL_LEN",
+        "byte_offset": 20,
+        "ctype": "uint32_t",
+        "sv_type": "logic [31:0]"
+      },
+      {
+        "name": "RESERVED2",
+        "byte_offset": 24,
+        "ctype": "uint32_t",
+        "sv_type": "logic [31:0]"
+      },
+      {
+        "name": "RESERVED3",
+        "byte_offset": 28,
+        "ctype": "uint32_t",
+        "sv_type": "logic [31:0]"
+      }
+    ],
+    "ctrl_bits": {
+      "STREAM_TLAST": 30,
+      "ALGO": 31
+    },
+    "ctrl_masks": {
+      "LEN": 16777215
+    },
+    "csw_bits": {
+      "OWNER": 31,
+      "DONE": 30,
+      "ERR": 29
+    },
+    "csw_masks": {
+      "STS": 3
+    },
+    "csw_status": {
+      "OK": 0,
+      "AXI_RESP": 1,
+      "OVERFLOW_OR_MISSING_TLAST": 2,
+      "INTERNAL": 3
+    }
+  },
+  "cache": {
+    "line_bytes": 32,
+    "alignment_bytes": 32,
+    "raw_copy_len_multiple": 32
+  },
+  "ring": {
+    "min_size": 2,
+    "keep_one_slot_open": true,
+    "full_when_next_tail_equals_hw_head": true,
+    "submit_full_rc": -5
+  },
+  "raw_copy": {
+    "fifo_depth": 32,
+    "fifo_memory": "BRAM",
+    "tlast_width": 1,
+    "required_axis_signals": [
+      "TDATA",
+      "TVALID",
+      "TREADY",
+      "TLAST"
+    ]
+  },
+  "sequences": {
+    "submission": [
+      "flush_desc_and_src",
+      "dsb",
+      "write_sw_tail",
+      "dsb",
+      "write_doorbell"
+    ],
+    "validation": [
+      "poll_csw_success",
+      "invalidate_dst",
+      "dsb",
+      "memcmp"
+    ]
+  },
+  "soft_reset": {
+    "clears": [
+      "dma_state_machine",
+      "axis_fifo"
+    ],
+    "retry_requires": [
+      "fifo_empty",
+      "s2mm_no_pending_beat",
+      "fresh_csw_observation"
+    ]
+  },
+  "irq": {
+    "enable_bits": {
+      "DONE": 0
+    },
+    "status_bits": {
+      "DONE_PENDING": 0
+    },
+    "ack_bits": {
+      "DONE_ACK": 0
+    },
+    "default_coalesce_count": 8,
+    "default_coalesce_timeout_cycles": 5000,
+    "timeout_reference_clock_hz": 50000000,
+    "timeout_reference_window_us": 100,
+    "isr_rules": [
+      "read_irq_status",
+      "ack_done_pending",
+      "schedule_bottom_half",
+      "no_polling",
+      "no_delay",
+      "no_cache_invalidate",
+      "no_memcmp",
+      "no_long_uart_print"
+    ],
+    "completion_event_requires": [
+      "payload_wb_b_handshake_complete",
+      "actual_len_wb_b_handshake_complete",
+      "csw_wb_b_handshake_complete"
+    ],
+    "completion_event_sequence": [
+      "payload_wb_b_handshake_complete",
+      "actual_len_wb_b_handshake_complete",
+      "csw_wb_b_handshake_complete"
+    ]
+  },
+  "stream_mode": {
+    "ctrl_bit": "STREAM_TLAST",
+    "len_semantics": {
+      "fixed": "requested_len",
+      "stream_tlast": "buffer_capacity"
+    },
+    "actual_len_fixed_equals_requested_len": true,
+    "actual_len_stream_equals_received_bytes": true
+  }
+}

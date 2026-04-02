@@ -120,7 +120,7 @@ class TestDmaRawCopyContracts(unittest.TestCase):
             self.assertIn("2. `ax7020_repo_design1_uart_baseline`", text)
             self.assertIn("3. `ax7020_dma_raw_copy_smoke`", text)
 
-        self.assertIn("4. `ax7020_dma_mvp_smoke_system`", repo_text)
+        self.assertIn("4. `ax7020_dma_raw_copy_mvp`", repo_text)
         self.assertNotIn("ax7020_low_lut_raw_copy_dma_smoke", repo_text)
         self.assertIn("Hello ALINX!", vendor_text)
         self.assertIn("REPO DESIGN1 UART BASELINE", repo_text)

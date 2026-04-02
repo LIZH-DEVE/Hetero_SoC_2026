@@ -73,7 +73,7 @@ class TestDmaMvpDriverPhase2Contracts(unittest.TestCase):
         )
         self.assertRegex(
             impl_text,
-            r"return dma_ring_submit_common\(\s*ctx,\s*dst_addr,\s*src_addr,\s*byte_len,\s*0u,\s*payload_addr,\s*payload_len,\s*1u,\s*0u,\s*0u\s*\);",
+            r"return dma_ring_submit_common\(\s*ctx,\s*dst_addr,\s*src_addr,\s*byte_len,\s*0u,\s*payload_addr,\s*payload_len,\s*1u,\s*0u,\s*1u,\s*0u\s*\);",
         )
         self.assertRegex(
             impl_text,
@@ -168,7 +168,7 @@ class TestDmaMvpDriverPhase2Contracts(unittest.TestCase):
         )
         self.assertRegex(
             impl_text,
-            r"return dma_ring_submit_common\(\s*ctx,\s*dst_addr,\s*0u,\s*buffer_capacity,\s*0u,\s*payload_addr,\s*payload_len,\s*0u,\s*1u,\s*1u\s*\);",
+            r"return dma_ring_submit_common\(\s*ctx,\s*dst_addr,\s*0u,\s*buffer_capacity,\s*0u,\s*payload_addr,\s*payload_len,\s*0u,\s*1u,\s*1u,\s*1u\s*\);",
         )
 
 

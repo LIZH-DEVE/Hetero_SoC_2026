@@ -16,6 +16,17 @@ package dma_csr_pkg;
   localparam logic [31:0] DMA_CSR_IRQ_ACK = 32'h00000068;
   localparam logic [31:0] DMA_CSR_IRQ_COALESCE_COUNT = 32'h0000006C;
   localparam logic [31:0] DMA_CSR_IRQ_COALESCE_TIMEOUT = 32'h00000070;
+  localparam logic [31:0] DMA_CSR_DEBUG_STATUS = 32'h000000D4;
+  localparam logic [31:0] DMA_CSR_DEBUG_SOURCE_PROGRESS = 32'h000000D8;
+  localparam logic [31:0] DMA_CSR_DEBUG_SINK_PROGRESS = 32'h000000DC;
+  localparam logic [31:0] DMA_CSR_DEBUG_PLAINTEXT_WORD0 = 32'h000000E0;
+  localparam logic [31:0] DMA_CSR_DEBUG_PLAINTEXT_WORD1 = 32'h000000E4;
+  localparam logic [31:0] DMA_CSR_DEBUG_PLAINTEXT_WORD2 = 32'h000000E8;
+  localparam logic [31:0] DMA_CSR_DEBUG_PLAINTEXT_WORD3 = 32'h000000EC;
+  localparam logic [31:0] DMA_CSR_DEBUG_KEY_WORD0 = 32'h000000F0;
+  localparam logic [31:0] DMA_CSR_DEBUG_KEY_WORD1 = 32'h000000F4;
+  localparam logic [31:0] DMA_CSR_DEBUG_KEY_WORD2 = 32'h000000F8;
+  localparam logic [31:0] DMA_CSR_DEBUG_KEY_WORD3 = 32'h000000FC;
   localparam logic [31:0] DMA_CSR_RING_DOORBELL_KICK = 32'h00000001;
 
   localparam int unsigned DMA_CTRL_BIT_START = 0;

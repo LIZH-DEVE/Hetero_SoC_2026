@@ -81,7 +81,7 @@ class TestUdpCryptoGatewayBackendSplit(unittest.TestCase):
         for token in (
             'gateway_backend_require(GATEWAY_BACKEND_CAP_CRYPTO_SYNC, "encrypt_sync")',
             'gateway_backend_require(GATEWAY_BACKEND_CAP_CRYPTO_SYNC, "bench")',
-            'udp_crypto_gateway: backend op=%s not supported kind=%u caps=0x%08lx need=0x%08lx',
+            'udp_crypto_gateway: backend op=%s not supported kind=%u caps=0x%08x need=0x%08x',
             "int udp_crypto_gateway_run_direct_smoke_checked(unsigned case_id)",
             "int udp_crypto_gateway_run_backend_split_smoke_checked(void)",
             "gateway_backend_select_dma_probe();",
