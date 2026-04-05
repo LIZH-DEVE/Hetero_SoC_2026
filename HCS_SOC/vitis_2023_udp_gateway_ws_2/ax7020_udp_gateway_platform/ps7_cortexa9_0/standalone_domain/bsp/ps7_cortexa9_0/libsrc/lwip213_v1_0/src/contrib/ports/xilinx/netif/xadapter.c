@@ -462,6 +462,9 @@ void eth_link_detect(struct netif *netif)
 #endif
 
 	switch (xemac->type) {
+		case xemac_type_unknown:
+		case xemac_type_xps_ll_temac:
+			break;
 		case xemac_type_emacps:
 #if defined(XLWIP_CONFIG_INCLUDE_GEM)
 	emacps_link_status(netif, xemacps, xemacpsp);

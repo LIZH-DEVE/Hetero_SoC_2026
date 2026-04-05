@@ -3,6 +3,35 @@ proc usage {} {
     exit 1
 }
 
+proc dump_visible_targets {} {
+    set dump ""
+    catch {set dump [string trim [targets]]}
+    puts "JTAG_TARGET_DUMP_BEGIN"
+    if {$dump eq ""} {
+        puts "<none>"
+    } else {
+        puts $dump
+    }
+    puts "JTAG_TARGET_DUMP_END"
+    return $dump
+}
+
+proc ensure_jtag_targets_visible {} {
+    for {set attempt 0} {$attempt < 5} {incr attempt} {
+        set dump ""
+        catch {set dump [string trim [targets]]}
+        if {$dump ne ""} {
+            return
+        }
+        if {$attempt < 4} {
+            puts "JTAG target discovery retry..."
+            after 1000
+        }
+    }
+    dump_visible_targets
+    error "no JTAG targets visible to XSCT after retry; check board power, JTAG USB connection, and cable drivers"
+}
+
 proc select_first_matching {patterns} {
     foreach pattern $patterns {
         if {![catch {targets -set -filter [format {name =~ "%s"} $pattern]}]} {
@@ -68,7 +97,7 @@ proc configure_uart1_console {} {
     mwr $uart1_base 0x00000003
     mwr [expr {$uart1_base + 0x04}] 0x00000020
     mwr [expr {$uart1_base + 0x18}] 62
-    mwr [expr {$uart1_base + 0x34}] 0x00000006
+    mwr [expr {$uart1_base + 0x34}] 0x0000000D
     mwr $uart1_base 0x00000114
 }
 
@@ -166,6 +195,7 @@ if {$validate_only} {
 }
 
 connect
+ensure_jtag_targets_visible
 
 if {!$skip_bitstream} {
     select_first_matching [list "*xc7z020*" "*7z020*" "*xc7z*"]

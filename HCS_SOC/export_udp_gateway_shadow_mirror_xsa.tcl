@@ -61,16 +61,32 @@ proc lock_shadow_wrapper_top {} {
     set_property top udp_gateway_shadow_mirror_wrapper $src_fileset
 }
 
-proc enable_shadow_wrapper_auto_hierarchy {} {
-    set_property source_mgmt_mode All [current_project]
-}
-
 proc mark_shadow_wrapper_sources {wrapper_files} {
     foreach wrapper_file $wrapper_files {
         set wrapper_obj [get_files -all -quiet [file normalize $wrapper_file]]
         if {[llength $wrapper_obj] != 0} {
             set_property used_in_synthesis true $wrapper_obj
             set_property used_in_implementation true $wrapper_obj
+        }
+    }
+}
+
+proc keep_shadow_inactive_sources_disabled {} {
+    global repo_root
+
+    foreach rel_path [list \
+        "rtl/security/config_packet_auth.sv" \
+        "rtl/security/key_vault.sv" \
+        "rtl/core/crypto/crypto_engine.sv" \
+        "rtl/security/five_tuple_extractor.sv" \
+    ] {
+        set abs_path [file normalize [file join $repo_root $rel_path]]
+        set file_obj [get_files -all -quiet $abs_path]
+        if {[llength $file_obj] != 0} {
+            catch {set_property is_enabled false $file_obj}
+            set_property used_in_synthesis false $file_obj
+            set_property used_in_implementation false $file_obj
+            catch {set_property used_in_simulation false $file_obj}
         }
     }
 }
@@ -83,8 +99,63 @@ if {![file exists $source_bd]} {
 }
 
 open_project -quiet $project_file
+set_property source_mgmt_mode All [current_project]
+keep_shadow_inactive_sources_disabled
 remove_orphan_project_file [file join $workspace_root "HCS_SOC.srcs" "sources_1" "bd" "dma_gateway_hybrid_axi3_probe" "dma_gateway_hybrid_axi3_probe.bd"]
-enable_shadow_wrapper_auto_hierarchy
+remove_orphan_project_file [file join $workspace_root "HCS_SOC.srcs" "sources_1" "bd" "system" "system.bd"]
+set stale_system_bd_files [get_files -quiet [file join $workspace_root "HCS_SOC.srcs" "sources_1" "bd" "system" *]]
+if {[llength $stale_system_bd_files] != 0} {
+    catch {remove_files $stale_system_bd_files}
+}
+foreach stale_system_fileset [get_filesets -quiet "system_dma_subsystem_v2_wra_0_0*"] {
+    catch {delete_fileset $stale_system_fileset}
+}
+foreach stale_system_run [get_runs -quiet "system_dma_subsystem_v2_wra_0_0*"] {
+    catch {delete_run $stale_system_run}
+}
+
+if {[llength [get_files -quiet $raw_bd]] != 0} {
+    set raw_designs [get_bd_designs -quiet $raw_bd_name]
+    if {[llength $raw_designs] != 0} {
+        catch {close_bd_design $raw_designs}
+    }
+    catch {remove_files [get_files -quiet $raw_bd]}
+}
+set stale_raw_project_files [concat \
+    [get_files -quiet [file join $workspace_root "HCS_SOC.srcs" "sources_1" "bd" $raw_bd_name *]] \
+    [get_files -quiet [file join $workspace_root "HCS_SOC.gen" "sources_1" "bd" $raw_bd_name *]] \
+]
+if {[llength $stale_raw_project_files] != 0} {
+    catch {remove_files $stale_raw_project_files}
+}
+foreach stale_raw_fileset [get_filesets -quiet "${raw_bd_name}_*"] {
+    catch {delete_fileset $stale_raw_fileset}
+}
+foreach stale_raw_run [get_runs -quiet "${raw_bd_name}_*"] {
+    catch {delete_run $stale_raw_run}
+}
+foreach stale_crypto_fileset [get_filesets -quiet "${raw_bd_name}_crypto_accel_axi_0_0*"] {
+    catch {delete_fileset $stale_crypto_fileset}
+}
+set stale_crypto_ip_files [concat \
+    [get_files -quiet [file join $workspace_root "HCS_SOC.gen" "sources_1" "bd" $raw_bd_name "ip" "${raw_bd_name}_crypto_accel_axi_0_0*" *]] \
+    [get_files -quiet [file join $workspace_root "HCS_SOC.srcs" "sources_1" "bd" $raw_bd_name "ip" "${raw_bd_name}_crypto_accel_axi_0_0*" *]] \
+]
+if {[llength $stale_crypto_ip_files] != 0} {
+    catch {remove_files $stale_crypto_ip_files}
+}
+foreach stale_path [list $raw_bd_dir [file join $workspace_root "HCS_SOC.gen" "sources_1" "bd" $raw_bd_name]] {
+    if {[file exists $stale_path]} {
+        if {[catch {file delete -force $stale_path} delete_err]} {
+            puts "Warning: failed to delete stale shadow-mirror artifact $stale_path: $delete_err"
+        }
+    }
+}
+
+close_project
+open_project -quiet $project_file
+set_property source_mgmt_mode All [current_project]
+keep_shadow_inactive_sources_disabled
 
 foreach src_info {
     {"rtl/inc/dma_csr_pkg.sv" "SystemVerilog"}
@@ -118,31 +189,6 @@ foreach xdc_src {
     "constraints/shadow_mirror_phasec_constraints.xdc"
 } {
     ensure_constraint_source [file join $repo_root $xdc_src]
-}
-
-if {[llength [get_files -quiet $raw_bd]] != 0} {
-    set raw_designs [get_bd_designs -quiet $raw_bd_name]
-    if {[llength $raw_designs] != 0} {
-        catch {close_bd_design $raw_designs}
-    }
-    catch {remove_files [get_files -quiet $raw_bd]}
-}
-foreach stale_crypto_fileset [get_filesets -quiet "${raw_bd_name}_crypto_accel_axi_0_0*"] {
-    catch {delete_fileset $stale_crypto_fileset}
-}
-set stale_crypto_ip_files [concat \
-    [get_files -quiet [file join $workspace_root "HCS_SOC.gen" "sources_1" "bd" $raw_bd_name "ip" "${raw_bd_name}_crypto_accel_axi_0_0*" *]] \
-    [get_files -quiet [file join $workspace_root "HCS_SOC.srcs" "sources_1" "bd" $raw_bd_name "ip" "${raw_bd_name}_crypto_accel_axi_0_0*" *]] \
-]
-if {[llength $stale_crypto_ip_files] != 0} {
-    catch {remove_files $stale_crypto_ip_files}
-}
-foreach stale_path [list $raw_bd_dir [file join $workspace_root "HCS_SOC.gen" "sources_1" "bd" $raw_bd_name]] {
-    if {[file exists $stale_path]} {
-        if {[catch {file delete -force $stale_path} delete_err]} {
-            puts "Warning: failed to delete stale shadow-mirror artifact $stale_path: $delete_err"
-        }
-    }
 }
 
 open_bd_design $source_bd
@@ -183,6 +229,17 @@ save_bd_design
 catch {close_bd_design [current_bd_design]}
 generate_target all $raw_bd_obj
 export_ip_user_files -of_objects $raw_bd_obj -sync -force -quiet
+catch {close_bd_design [current_bd_design]}
+close_project
+open_project -quiet $project_file
+set_property source_mgmt_mode All [current_project]
+keep_shadow_inactive_sources_disabled
+lock_shadow_wrapper_top
+set raw_bd_obj [lindex [get_files -quiet $raw_bd] 0]
+if {$raw_bd_obj eq ""} {
+    error "shadow mirror bd file disappeared after generate_target/export_ip_user_files: $raw_bd"
+}
+open_bd_design $raw_bd
 set crypto_ref_synth_wrappers [glob -nocomplain $crypto_ref_synth_wrapper_pattern]
 foreach crypto_ref_synth_wrapper $crypto_ref_synth_wrappers {
     if {[llength [get_files -quiet $crypto_ref_synth_wrapper]] == 0} {
@@ -226,20 +283,12 @@ foreach shadow_run [get_runs -quiet "${raw_bd_name}_*"] {
 }
 reset_run synth_1
 reset_run impl_1
-if {[llength [get_runs -quiet "${raw_bd_name}_*_synth_1"]] == 0} {
-    catch {create_ip_run $raw_bd_obj}
-}
-set shadow_child_runs [get_runs -quiet "${raw_bd_name}_*_synth_1"]
-if {[llength $shadow_child_runs] != 0} {
-    lock_shadow_wrapper_top
-    launch_runs $shadow_child_runs -scripts_only
-}
+lock_shadow_wrapper_top
 lock_shadow_wrapper_top
 launch_runs synth_1 -scripts_only
 foreach required_run_name [list \
     "${raw_bd_name}_processing_system7_0_0_synth_1" \
     "${raw_bd_name}_dma_gateway_hybrid_0_0_synth_1" \
-    "${raw_bd_name}_crypto_accel_axi_0_0_synth_1" \
 ] {
     set required_run_name_no_step [string map {"_synth_1" ""} $required_run_name]
     set required_run_script [file join $runs_root $required_run_name "${required_run_name_no_step}.tcl"]

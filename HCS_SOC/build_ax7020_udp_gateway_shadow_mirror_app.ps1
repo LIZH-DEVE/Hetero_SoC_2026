@@ -19,6 +19,9 @@ $linkerScript = Join-Path $appSrcDir "lscript.ld"
 $defaultSpecsFile = Join-Path $workspace "vitis_2023_udp_gateway_ws_2\ax7020_udp_gateway_app\Debug\Xilinx.spec"
 $defaultWorkspaceRoot = Join-Path $workspace "ax7020_udp_gateway_shadow_mirror_platform_xsct\workspace"
 $defaultPlatformName = "ax7020_udp_gateway_shadow_mirror_platform"
+$legacyGatewayBspDir = Join-Path $workspace "vitis_2023_udp_gateway_ws_2\ax7020_udp_gateway_platform\ps7_cortexa9_0\standalone_domain\bsp"
+$legacyGatewayBspProcessorRoot = Join-Path $legacyGatewayBspDir "ps7_cortexa9_0"
+$legacyGatewayLwipSrcDir = Join-Path $legacyGatewayBspProcessorRoot "libsrc\lwip213_v1_0\src"
 $legacyGatewayDomain = Join-Path $workspace "vitis_2023_udp_gateway_ws_2\ax7020_udp_gateway_platform\export\ax7020_udp_gateway_platform\sw\ax7020_udp_gateway_platform\standalone_domain"
 
 function Resolve-ShadowApiBspRoot {
@@ -101,6 +104,88 @@ function Resolve-SpecsFile {
     throw "Xilinx.spec could not be resolved from platform root: $StartDir"
 }
 
+function Resolve-GnuMakePath {
+    param([string]$VitisRoot)
+
+    $candidate = Join-Path $VitisRoot "gnuwin\bin\make.exe"
+    if (Test-Path $candidate) {
+        return (Resolve-Path $candidate).Path
+    }
+
+    $fallback = Get-Command make -ErrorAction SilentlyContinue
+    if ($null -ne $fallback) {
+        return $fallback.Source
+    }
+
+    throw "GNU make not found. Expected Vitis gnuwin make.exe under $VitisRoot"
+}
+
+function Update-LegacyLwipLibrary {
+    param(
+        [string]$VitisRoot,
+        [string]$GccPath,
+        [string]$LegacyGatewayLwipSrcDir,
+        [string]$LegacyGatewayBspLibDir,
+        [string]$LegacyGatewayExportLwipLib,
+        [string]$LegacyGatewayLwipSource
+    )
+
+    if (-not (Test-Path $LegacyGatewayLwipSrcDir)) {
+        return
+    }
+
+    if (-not (Test-Path $LegacyGatewayLwipSource)) {
+        return
+    }
+
+    $makeExe = Resolve-GnuMakePath -VitisRoot $VitisRoot
+    $gccBinDir = Split-Path -Parent $GccPath
+    $lwipLib = Join-Path $LegacyGatewayBspLibDir "liblwip4.a"
+    $originalPath = $env:PATH
+
+    try {
+        $env:PATH = "$gccBinDir;$(Split-Path -Parent $makeExe);$originalPath"
+        $makeArgs = @(
+            "--no-print-directory",
+            "-C", $LegacyGatewayLwipSrcDir,
+            "",
+            "SHELL=CMD",
+            "GCC_COMPILER=arm-none-eabi-gcc",
+            "COMPILER=arm-none-eabi-gcc",
+            "ASSEMBLER=arm-none-eabi-as",
+            "ARCHIVER=arm-none-eabi-ar",
+            "COMPILER_FLAGS=  -O2 -c",
+            "EXTRA_COMPILER_FLAGS=-mcpu=cortex-a9 -mfpu=vfpv3 -mfloat-abi=hard -nostartfiles -g -Wall -Wextra -fno-tree-loop-distribute-patterns"
+        )
+
+        $makeArgs[3] = "clean"
+        & $makeExe @makeArgs
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to clean legacy lwIP objects under $LegacyGatewayLwipSrcDir"
+        }
+
+        $makeArgs[3] = "libs"
+        & $makeExe @makeArgs
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to rebuild legacy lwIP BSP library under $LegacyGatewayLwipSrcDir"
+        }
+    }
+    finally {
+        $env:PATH = $originalPath
+    }
+
+    if (-not (Test-Path $lwipLib)) {
+        throw "Legacy lwIP BSP library was not produced: $lwipLib"
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($LegacyGatewayExportLwipLib)) {
+        $exportDir = Split-Path -Parent $LegacyGatewayExportLwipLib
+        if (Test-Path $exportDir) {
+            Copy-Item -Path $lwipLib -Destination $LegacyGatewayExportLwipLib -Force
+        }
+    }
+}
+
 if ([string]::IsNullOrWhiteSpace($PlatformSwDir)) {
     $PlatformSwDir = Resolve-ShadowApiBspRoot -WorkspaceRoot $defaultWorkspaceRoot -PlatformName $defaultPlatformName
 }
@@ -109,8 +194,12 @@ $workspaceRoot = Resolve-WorkspaceRootFromApiBspRoot -ApiBspRoot $PlatformSwDir
 $toolchainRoot = Resolve-ShadowToolchainRoot -WorkspaceRoot $workspaceRoot -ApiBspRoot $PlatformSwDir -PlatformName $defaultPlatformName
 $includeDir = Join-Path $PlatformSwDir "include"
 $libDir = Join-Path $toolchainRoot "lib"
+$legacyGatewayBspIncludeDir = Join-Path $legacyGatewayBspProcessorRoot "include"
+$legacyGatewayBspLibDir = Join-Path $legacyGatewayBspProcessorRoot "lib"
+$legacyGatewayLwipSource = Join-Path $legacyGatewayBspProcessorRoot "libsrc\lwip213_v1_0\src\contrib\ports\xilinx\netif\xemacpsif.c"
 $legacyGatewayIncludeDir = Join-Path $legacyGatewayDomain "bspinclude\include"
 $legacyGatewayLibDir = Join-Path $legacyGatewayDomain "bsplib\lib"
+$legacyGatewayExportLwipLib = Join-Path $legacyGatewayLibDir "liblwip4.a"
 $gcc = Join-Path $VitisRoot "gnu\aarch32\nt\gcc-arm-none-eabi\bin\arm-none-eabi-gcc.exe"
 $size = Join-Path $VitisRoot "gnu\aarch32\nt\gcc-arm-none-eabi\bin\arm-none-eabi-size.exe"
 $specsFile = Resolve-SpecsFile -StartDir $toolchainRoot
@@ -138,6 +227,14 @@ foreach ($path in @(
     }
 }
 
+Update-LegacyLwipLibrary `
+    -VitisRoot $VitisRoot `
+    -GccPath $gcc `
+    -LegacyGatewayLwipSrcDir $legacyGatewayLwipSrcDir `
+    -LegacyGatewayBspLibDir $legacyGatewayBspLibDir `
+    -LegacyGatewayExportLwipLib $legacyGatewayExportLwipLib `
+    -LegacyGatewayLwipSource $legacyGatewayLwipSource
+
 if (Test-Path $buildDir) {
     Remove-Item -Recurse -Force $buildDir
 }
@@ -154,13 +251,24 @@ $includeDirs = @(
     $workspace
 )
 
+if ((Test-Path $legacyGatewayBspIncludeDir) -and (Test-Path (Join-Path $legacyGatewayBspIncludeDir "netif\xadapter.h"))) {
+    $includeDirs += $legacyGatewayBspIncludeDir
+}
+
+if ((Test-Path $legacyGatewayIncludeDir) -and (Test-Path (Join-Path $legacyGatewayIncludeDir "netif\xadapter.h"))) {
+    $includeDirs += $legacyGatewayIncludeDir
+}
+
 $libraryIncludeDir = Join-Path (Split-Path -Parent $libDir) "include"
 if ((Test-Path $libraryIncludeDir) -and ($libraryIncludeDir -ne $includeDir)) {
     $includeDirs += $libraryIncludeDir
 }
 
-if ((Test-Path $legacyGatewayIncludeDir) -and (Test-Path (Join-Path $legacyGatewayIncludeDir "netif\xadapter.h"))) {
-    $includeDirs += $legacyGatewayIncludeDir
+if (Test-Path $legacyGatewayBspLibDir) {
+    $resolvedLegacyBspLibDir = (Resolve-Path $legacyGatewayBspLibDir).Path
+    if (-not $libDirs.Contains($resolvedLegacyBspLibDir)) {
+        $libDirs.Add($resolvedLegacyBspLibDir) | Out-Null
+    }
 }
 
 if (Test-Path $legacyGatewayLibDir) {

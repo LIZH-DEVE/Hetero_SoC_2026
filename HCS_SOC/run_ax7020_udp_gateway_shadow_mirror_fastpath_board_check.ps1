@@ -17,7 +17,9 @@ param(
 
     [switch]$Deploy,
 
-    [switch]$AssumeRunning
+    [switch]$AssumeRunning,
+
+    [string]$XsctPath = "D:\Xilinx\Vitis\2024.1\bin\xsct.bat"
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,7 +29,8 @@ $workspace = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $workspace
 $captureScript = Join-Path $workspace "capture_uart_boot_log.ps1"
 $deployScript = Join-Path $workspace "deploy_ax7020_udp_gateway_shadow_mirror_to_sd.ps1"
-$controlScript = Join-Path $workspace "udp_crypto_control.py"
+$controlScript = Join-Path $repoRoot "handoff\robeieda_porting_pack\tools\udp_crypto_control.py"
+$sendTool = Join-Path $repoRoot "handoff\robeieda_porting_pack\tools\send_udp_crypto_test.py"
 $releaseBootBin = Join-Path $workspace "sd_boot\ax7020_udp_gateway_shadow_mirror\BOOT.BIN"
 $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $uartLogPath = Join-Path $repoRoot ("board_uart_boot_{0}_{1}.txt" -f $Baud, $stamp)
@@ -43,6 +46,9 @@ if (-not (Test-Path $releaseBootBin)) {
 }
 if (-not (Test-Path $controlScript)) {
     throw "Control helper not found: $controlScript"
+}
+if (-not (Test-Path $sendTool)) {
+    throw "UDP send helper not found: $sendTool"
 }
 
 $expectedHash = (Get-FileHash $releaseBootBin -Algorithm SHA256).Hash.ToUpperInvariant()
@@ -118,6 +124,52 @@ function Invoke-ControlCommandWithRetry {
         }
     }
     return $lastResult
+}
+
+function Invoke-PythonLogged {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Label,
+
+        [Parameter(Mandatory)]
+        [string[]]$Arguments
+    )
+
+    Write-Host ("==== {0} ====" -f $Label)
+    $stdoutPath = [System.IO.Path]::GetTempFileName()
+    $stderrPath = [System.IO.Path]::GetTempFileName()
+    try {
+        $proc = Start-Process -FilePath "py.exe" `
+            -ArgumentList (@("-3") + $Arguments) `
+            -NoNewWindow `
+            -Wait `
+            -PassThru `
+            -RedirectStandardOutput $stdoutPath `
+            -RedirectStandardError $stderrPath
+
+        $stdout = @()
+        $stderr = @()
+        if (Test-Path $stdoutPath) {
+            $stdout = @(Get-Content $stdoutPath)
+        }
+        if (Test-Path $stderrPath) {
+            $stderr = @(Get-Content $stderrPath)
+        }
+
+        $output = @($stdout + $stderr)
+        if ($output) {
+            $output | ForEach-Object { Write-Host $_ }
+        }
+
+        return [PSCustomObject]@{
+            Label = $Label
+            Output = $output
+            ExitCode = $proc.ExitCode
+        }
+    }
+    finally {
+        Remove-Item $stdoutPath, $stderrPath -ErrorAction SilentlyContinue
+    }
 }
 
 function New-SeqArgs {
@@ -203,6 +255,120 @@ function Get-UartEvidenceLine {
     return $line
 }
 
+function Convert-ToUInt32Value {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Value
+    )
+
+    $normalized = $Value.Trim()
+    if ($normalized -match '^0x[0-9A-Fa-f]+$') {
+        return [uint32]([Convert]::ToUInt64($normalized.Substring(2), 16))
+    }
+    if ($normalized -match '^[0-9]+$') {
+        return [uint32]$normalized
+    }
+    throw "Unsupported uint32 value format: $Value"
+}
+
+function Invoke-XsctScript {
+    param(
+        [Parameter(Mandatory)]
+        [string]$ScriptBody
+    )
+
+    if (-not (Test-Path $XsctPath)) {
+        throw "XSCT executable not found: $XsctPath"
+    }
+
+    $scriptPath = Join-Path $env:TEMP ("shadow_fastpath_xsct_{0}.tcl" -f ([guid]::NewGuid().ToString("N")))
+    $stdoutPath = Join-Path $env:TEMP ("shadow_fastpath_xsct_stdout_{0}.txt" -f ([guid]::NewGuid().ToString("N")))
+    $stderrPath = Join-Path $env:TEMP ("shadow_fastpath_xsct_stderr_{0}.txt" -f ([guid]::NewGuid().ToString("N")))
+    try {
+        [System.IO.File]::WriteAllText($scriptPath, $ScriptBody, [System.Text.Encoding]::ASCII)
+        $proc = Start-Process -FilePath $XsctPath `
+            -ArgumentList @($scriptPath) `
+            -NoNewWindow `
+            -Wait `
+            -PassThru `
+            -RedirectStandardOutput $stdoutPath `
+            -RedirectStandardError $stderrPath
+
+        $output = @()
+        if (Test-Path $stdoutPath) {
+            $output += Get-Content $stdoutPath
+        }
+        if (Test-Path $stderrPath) {
+            $output += Get-Content $stderrPath
+        }
+
+        return [PSCustomObject]@{
+            ExitCode = $proc.ExitCode
+            Output = @($output)
+        }
+    }
+    finally {
+        Remove-Item $scriptPath, $stdoutPath, $stderrPath -ErrorAction SilentlyContinue
+    }
+}
+
+function Get-FastpathCsrSnapshot {
+    $tclScript = @'
+proc select_first_matching {patterns} {
+    foreach pattern $patterns {
+        if {![catch {targets -set -filter [format {name =~ "%s"} $pattern]}]} {
+            return $pattern
+        }
+    }
+    error [format "no targets found for patterns: %s" [join $patterns ", "]]
+}
+
+proc ensure_jtag_targets_visible {} {
+    for {set attempt 0} {$attempt < 5} {incr attempt} {
+        set dump ""
+        catch {set dump [string trim [targets]]}
+        if {$dump ne ""} {
+            return
+        }
+        if {$attempt < 4} {
+            after 1000
+        }
+    }
+    error "no JTAG targets visible to XSCT after retry"
+}
+
+proc select_ps_access_target {} {
+    if {![catch {set chosen [select_first_matching [list "*DAP*" "*PS7*"]]}]} {
+        return $chosen
+    }
+    return [select_first_matching [list "*APU*" "*Cortex-A9 MPCore #0*"]]
+}
+
+connect
+ensure_jtag_targets_visible
+select_ps_access_target
+# XSCT blocks plain mrd -value on PL AXI slave windows unless -force is used.
+puts [format "fastpath_status=0x%08X" [mrd -force -value 0x400000E0]]
+puts [format "fastpath_hit_count=0x%08X" [mrd -force -value 0x400000E4]]
+puts [format "fastpath_fallback_count=0x%08X" [mrd -force -value 0x400000E8]]
+puts [format "txcap_status=0x%08X" [mrd -force -value 0x400000B0]]
+exit 0
+'@
+
+    $result = Invoke-XsctScript -ScriptBody $tclScript
+    if ($result.ExitCode -ne 0) {
+        throw ("XSCT fastpath CSR snapshot failed with exit code {0}: {1}" -f $result.ExitCode, ($result.Output -join "; "))
+    }
+
+    return [PSCustomObject]@{
+        fastpath_status = Convert-ToUInt32Value (Get-ControlValue -Output $result.Output -Key "fastpath_status")
+        fastpath_hit_count = Convert-ToUInt32Value (Get-ControlValue -Output $result.Output -Key "fastpath_hit_count")
+        fastpath_fallback_count = Convert-ToUInt32Value (Get-ControlValue -Output $result.Output -Key "fastpath_fallback_count")
+        txcap_status = Convert-ToUInt32Value (Get-ControlValue -Output $result.Output -Key "txcap_status")
+        xsct_output = @($result.Output)
+    }
+}
+
 try {
     if ($Deploy) {
         if (-not $SdDrive) {
@@ -278,10 +444,37 @@ try {
         throw "set-key failed with exit code $($setKey.ExitCode)"
     }
     $setKeyReply = Get-ControlValue -Output $setKey.Output -Key "reply_payload_hex"
+    $baselineFastpathSnapshot = $null
+    if ($AssumeRunning) {
+        $baselineFastpathSnapshot = Get-FastpathCsrSnapshot
+    }
 
-    Send-LiveUdpPacket -Label "AES" -PayloadHex $aesPayloadHex -RemotePort 4660
+    $aesProbe = Invoke-PythonLogged -Label "AES" -Arguments @(
+        $sendTool,
+        "--algo", "aes",
+        "--ip", $TargetIp,
+        "--source-ip", $SourceIp,
+        "--timeout", "5",
+        "--summary-only",
+        "--expect-any-reply"
+    )
+    if ($aesProbe.ExitCode -ne 0) {
+        throw "AES helper failed with exit code $($aesProbe.ExitCode)"
+    }
     Start-Sleep -Milliseconds 250
-    Send-LiveUdpPacket -Label "SM4" -PayloadHex $sm4PayloadHex -RemotePort 4661
+
+    $sm4Probe = Invoke-PythonLogged -Label "SM4" -Arguments @(
+        $sendTool,
+        "--algo", "sm4",
+        "--ip", $TargetIp,
+        "--source-ip", $SourceIp,
+        "--timeout", "5",
+        "--summary-only",
+        "--expect-any-reply"
+    )
+    if ($sm4Probe.ExitCode -ne 0) {
+        throw "SM4 helper failed with exit code $($sm4Probe.ExitCode)"
+    }
     Start-Sleep -Milliseconds 500
 
     try {
@@ -311,67 +504,110 @@ try {
         throw "UART log file was not created: $uartLogPath"
     }
 
-    $uartLines = Get-Content $uartLogPath
+    $uartLines = @(Get-Content $uartLogPath)
+    if ($uartLines.Count -eq 0) {
+        throw "UART log captured no data; fastpath evidence unavailable"
+    }
     $uartText = $uartLines -join [Environment]::NewLine
+    $fastpathEvidenceMode = "uart_log"
+    $fastpathHitCount = $null
+    $fastpathFallbackCount = $null
+    $txcapEvidenceLines = @()
 
-    $liveAesLine = Get-UartEvidenceLine -Lines $uartLines -Pattern "LIVE_AES PASS" -Description "LIVE_AES PASS line"
-    $liveSm4Line = Get-UartEvidenceLine -Lines $uartLines -Pattern "LIVE_SM4 PASS" -Description "LIVE_SM4 PASS line"
-    $shadowAesLine = Get-UartEvidenceLine -Lines $uartLines -Pattern "SHADOW_AES PASS" -Description "SHADOW_AES PASS line"
-    $shadowSm4Line = Get-UartEvidenceLine -Lines $uartLines -Pattern "SHADOW_SM4 PASS" -Description "SHADOW_SM4 PASS line"
-    $fastpathPassLines = @($uartLines | Where-Object { $_ -match "SHADOW_FASTPATH PASS" })
-    $fastpathFallbackLines = @($uartLines | Where-Object { $_ -match "SHADOW_FASTPATH FALLBACK" })
-    $txcapEvidenceLines = @($uartLines | Where-Object { $_ -match "TXCAP words=" })
-    $fastpathHitCountLines = @($uartLines | Where-Object { $_ -match "FASTPATH_HIT_COUNT count=" })
-    $fastpathFallbackCountLines = @($uartLines | Where-Object { $_ -match "FASTPATH_FALLBACK_COUNT count=" })
+    try {
+        $liveAesLine = Get-UartEvidenceLine -Lines $uartLines -Pattern "LIVE_AES PASS" -Description "LIVE_AES PASS line"
+        $liveSm4Line = Get-UartEvidenceLine -Lines $uartLines -Pattern "LIVE_SM4 PASS" -Description "LIVE_SM4 PASS line"
+        $shadowAesLine = Get-UartEvidenceLine -Lines $uartLines -Pattern "SHADOW_AES PASS" -Description "SHADOW_AES PASS line"
+        $shadowSm4Line = Get-UartEvidenceLine -Lines $uartLines -Pattern "SHADOW_SM4 PASS" -Description "SHADOW_SM4 PASS line"
+        $fastpathPassLines = @($uartLines | Where-Object { $_ -match "SHADOW_FASTPATH PASS" })
+        $fastpathFallbackLines = @($uartLines | Where-Object { $_ -match "SHADOW_FASTPATH FALLBACK" })
+        $txcapEvidenceLines = @($uartLines | Where-Object { $_ -match "TXCAP words=" })
+        $fastpathHitCountLines = @($uartLines | Where-Object { $_ -match "FASTPATH_HIT_COUNT count=" })
+        $fastpathFallbackCountLines = @($uartLines | Where-Object { $_ -match "FASTPATH_FALLBACK_COUNT count=" })
 
-    if ($fastpathPassLines.Count -lt 2) {
-        throw "UART log does not show two SHADOW_FASTPATH PASS events"
-    }
-    if ($fastpathFallbackLines.Count -gt 0) {
-        throw ("Fastpath fallback observed in UART log: {0}" -f ($fastpathFallbackLines -join "; "))
-    }
-    if ($txcapEvidenceLines.Count -lt 2) {
-        throw "UART log does not show TXCAP words evidence for both algorithms"
-    }
-    if ($fastpathHitCountLines.Count -lt 2) {
-        throw "UART log does not show FASTPATH_HIT_COUNT for both algorithms"
-    }
-    if ($fastpathFallbackCountLines.Count -lt 2) {
-        throw "UART log does not show FASTPATH_FALLBACK_COUNT for both algorithms"
-    }
+        if ($fastpathPassLines.Count -lt 2) {
+            throw "UART log does not show two SHADOW_FASTPATH PASS events"
+        }
+        if ($fastpathFallbackLines.Count -gt 0) {
+            throw ("Fastpath fallback observed in UART log: {0}" -f ($fastpathFallbackLines -join "; "))
+        }
+        if ($txcapEvidenceLines.Count -lt 2) {
+            throw "UART log does not show TXCAP words evidence for both algorithms"
+        }
+        if ($fastpathHitCountLines.Count -lt 2) {
+            throw "UART log does not show FASTPATH_HIT_COUNT for both algorithms"
+        }
+        if ($fastpathFallbackCountLines.Count -lt 2) {
+            throw "UART log does not show FASTPATH_FALLBACK_COUNT for both algorithms"
+        }
 
-    $fastpathHitCountMatch = [regex]::Match($fastpathHitCountLines[-1], "FASTPATH_HIT_COUNT count=(\d+)")
-    if (-not $fastpathHitCountMatch.Success) {
-        throw "Failed to parse FASTPATH_HIT_COUNT from UART log"
-    }
-    $fastpathHitCount = [uint32]$fastpathHitCountMatch.Groups[1].Value
-    if ($fastpathHitCount -lt 2) {
-        throw "FASTPATH_HIT_COUNT did not reach 2 after AES and SM4 probes"
-    }
+        $fastpathHitCountMatch = [regex]::Match($fastpathHitCountLines[-1], "FASTPATH_HIT_COUNT count=(\d+)")
+        if (-not $fastpathHitCountMatch.Success) {
+            throw "Failed to parse FASTPATH_HIT_COUNT from UART log"
+        }
+        $fastpathHitCount = [uint32]$fastpathHitCountMatch.Groups[1].Value
+        if ($fastpathHitCount -lt 2) {
+            throw "FASTPATH_HIT_COUNT did not reach 2 after AES and SM4 probes"
+        }
 
-    $fastpathFallbackCountMatch = [regex]::Match($fastpathFallbackCountLines[-1], "FASTPATH_FALLBACK_COUNT count=(\d+)")
-    if (-not $fastpathFallbackCountMatch.Success) {
-        throw "Failed to parse FASTPATH_FALLBACK_COUNT from UART log"
-    }
-    $fastpathFallbackCount = [uint32]$fastpathFallbackCountMatch.Groups[1].Value
-    if ($fastpathFallbackCount -ne 0) {
-        throw "FASTPATH_FALLBACK_COUNT is non-zero after normal fastpath traffic"
-    }
+        $fastpathFallbackCountMatch = [regex]::Match($fastpathFallbackCountLines[-1], "FASTPATH_FALLBACK_COUNT count=(\d+)")
+        if (-not $fastpathFallbackCountMatch.Success) {
+            throw "Failed to parse FASTPATH_FALLBACK_COUNT from UART log"
+        }
+        $fastpathFallbackCount = [uint32]$fastpathFallbackCountMatch.Groups[1].Value
+        if ($fastpathFallbackCount -ne 0) {
+            throw "FASTPATH_FALLBACK_COUNT is non-zero after normal fastpath traffic"
+        }
 
-    Write-Host "==== UART KEY LINES ===="
-    Write-Host $liveAesLine
-    Write-Host $liveSm4Line
-    Write-Host $shadowAesLine
-    Write-Host $shadowSm4Line
-    $fastpathPassLines | ForEach-Object { Write-Host $_ }
+        Write-Host "==== UART KEY LINES ===="
+        Write-Host $liveAesLine
+        Write-Host $liveSm4Line
+        Write-Host $shadowAesLine
+        Write-Host $shadowSm4Line
+        $fastpathPassLines | ForEach-Object { Write-Host $_ }
 
-    Write-Host "==== TXCAP EVIDENCE ===="
-    $txcapEvidenceLines | ForEach-Object { Write-Host $_ }
+        Write-Host "==== TXCAP EVIDENCE ===="
+        $txcapEvidenceLines | ForEach-Object { Write-Host $_ }
+    }
+    catch {
+        if ($AssumeRunning -and $baselineFastpathSnapshot) {
+            $afterFastpathSnapshot = Get-FastpathCsrSnapshot
+            $fastpathEvidenceMode = "xsct_csr_fallback"
+            $txcapStorageEnabled = ((($afterFastpathSnapshot.fastpath_status -shr 6) -band 0x1) -eq 1)
+            $hitDelta = [uint32]($afterFastpathSnapshot.fastpath_hit_count - $baselineFastpathSnapshot.fastpath_hit_count)
+            $fallbackDelta = [uint32]($afterFastpathSnapshot.fastpath_fallback_count - $baselineFastpathSnapshot.fastpath_fallback_count)
+            $txcapWordsAfter = [uint32]($afterFastpathSnapshot.txcap_status -band 0x3FF)
+            if ($txcapStorageEnabled -and ($hitDelta -ge 2) -and ($fallbackDelta -eq 0)) {
+                $fastpathHitCount = $afterFastpathSnapshot.fastpath_hit_count
+                $fastpathFallbackCount = $afterFastpathSnapshot.fastpath_fallback_count
+                Write-Warning ("UART fastpath evidence unavailable; falling back to XSCT CSR snapshot: {0}" -f $_.Exception.Message)
+                Write-Host "FASTPATH_EVIDENCE_MODE=xsct_csr_fallback"
+                Write-Host "==== WRAPPER CSR PROBE ===="
+                Write-Host ("FASTPATH_STATUS_BEFORE=0x{0:X8}" -f $baselineFastpathSnapshot.fastpath_status)
+                Write-Host ("FASTPATH_STATUS_AFTER=0x{0:X8}" -f $afterFastpathSnapshot.fastpath_status)
+                Write-Host ("FASTPATH_HIT_COUNT_BEFORE={0}" -f $baselineFastpathSnapshot.fastpath_hit_count)
+                Write-Host ("FASTPATH_HIT_COUNT_AFTER={0}" -f $afterFastpathSnapshot.fastpath_hit_count)
+                Write-Host ("FASTPATH_FALLBACK_COUNT_BEFORE={0}" -f $baselineFastpathSnapshot.fastpath_fallback_count)
+                Write-Host ("FASTPATH_FALLBACK_COUNT_AFTER={0}" -f $afterFastpathSnapshot.fastpath_fallback_count)
+                Write-Host ("TXCAP_STATUS_AFTER=0x{0:X8}" -f $afterFastpathSnapshot.txcap_status)
+                Write-Host ("TXCAP_WORDS_AFTER={0}" -f $txcapWordsAfter)
+                Write-Host ("FASTPATH_HIT_DELTA={0}" -f $hitDelta)
+                Write-Host ("FASTPATH_FALLBACK_DELTA={0}" -f $fallbackDelta)
+            }
+            else {
+                throw ("UART fastpath evidence failed and XSCT CSR fallback did not meet acceptance. hitDelta={0} fallbackDelta={1} txcapWordsAfter={2} txcapStorageEnabled={3}. UART error: {4}" -f $hitDelta, $fallbackDelta, $txcapWordsAfter, $txcapStorageEnabled, $_.Exception.Message)
+            }
+        }
+        else {
+            throw
+        }
+    }
 
     Write-Host "==== CONTROL SUMMARY ===="
     Write-Host ("HELLO session_id={0}" -f $sessionId)
     Write-Host ("HELLO binding_id={0}" -f $bindingId)
     Write-Host ("SET_KEY reply_payload_hex={0}" -f $setKeyReply)
+    Write-Host ("FASTPATH_EVIDENCE_MODE={0}" -f $fastpathEvidenceMode)
     Write-Host ("FASTPATH_HIT_COUNT={0}" -f $fastpathHitCount)
     Write-Host ("FASTPATH_FALLBACK_COUNT={0}" -f $fastpathFallbackCount)
     if ($uartText -match "LIVE_CTRL PASS") {

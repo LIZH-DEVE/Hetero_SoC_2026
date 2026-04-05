@@ -16,8 +16,26 @@ Set-StrictMode -Version Latest
 $workspace = Split-Path -Parent $MyInvocation.MyCommand.Path
 $tclScript = Join-Path $workspace "download_ax7020_udp_gateway_shadow_mirror_jtag.tcl"
 
+function Resolve-DefaultBitstreamPath {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Workspace
+    )
+
+    $candidates = @(
+        Join-Path $Workspace "HCS_SOC.runs\impl_1\udp_gateway_shadow_mirror_wrapper.bit"
+        Join-Path $Workspace "sd_boot\ax7020_udp_gateway_shadow_mirror\udp_gateway_shadow_mirror_wrapper.bit"
+    ) | Where-Object { Test-Path $_ } | ForEach-Object { Get-Item $_ } | Sort-Object -Property LastWriteTime -Descending
+
+    if ($candidates.Count -gt 0) {
+        return $candidates[0].FullName
+    }
+
+    return (Join-Path $Workspace "HCS_SOC.runs\impl_1\udp_gateway_shadow_mirror_wrapper.bit")
+}
+
 if ([string]::IsNullOrWhiteSpace($BitstreamPath)) {
-    $BitstreamPath = Join-Path $workspace "sd_boot\ax7020_udp_gateway_shadow_mirror\udp_gateway_shadow_mirror_wrapper.bit"
+    $BitstreamPath = Resolve-DefaultBitstreamPath -Workspace $workspace
 }
 if ([string]::IsNullOrWhiteSpace($Ps7InitPath)) {
     $Ps7InitPath = Join-Path $workspace "ax7020_udp_gateway_shadow_mirror_platform_xsct\workspace\ax7020_udp_gateway_shadow_mirror_platform\hw\ps7_init.tcl"
@@ -96,6 +114,9 @@ if ($exitCode -ne 0) {
 }
 
 $successToken = if ($ValidateOnly) { "JTAG_VALIDATE_OK" } else { "JTAG_RUN_DONE" }
+if ($output -match "no JTAG targets visible to XSCT after retry") {
+    throw "XSCT could not see any JTAG targets. Check board power, the JTAG USB connection, and cable drivers."
+}
 if ($output -notmatch [regex]::Escape($successToken)) {
     throw "xsct completed without success token: $successToken"
 }

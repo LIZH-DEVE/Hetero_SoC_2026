@@ -19,6 +19,7 @@ EVIDENCE_EXPORT_TCL = HCS_SOC / "export_udp_gateway_shadow_mirror_evidence_pack.
 SHADOW_PHASEC_XDC = REPO_ROOT / "constraints" / "shadow_mirror_phasec_constraints.xdc"
 DEPLOY = HCS_SOC / "deploy_ax7020_udp_gateway_shadow_mirror_to_sd.ps1"
 PERF_CHECK = HCS_SOC / "run_ax7020_udp_gateway_shadow_mirror_performance_check.ps1"
+BENCH_MATRIX_CHECK = HCS_SOC / "run_ax7020_udp_gateway_shadow_mirror_bench_matrix.ps1"
 ACL_CHECK = HCS_SOC / "run_ax7020_udp_gateway_shadow_mirror_acl_check.ps1"
 FASTPATH_CHECK = HCS_SOC / "run_ax7020_udp_gateway_shadow_mirror_fastpath_board_check.ps1"
 SECURITY_CHECK = HCS_SOC / "run_ax7020_udp_gateway_shadow_mirror_security_check.ps1"
@@ -40,6 +41,7 @@ STAGED_FSBL = RELEASE_DIR / "fsbl.elf"
 STAGED_BIT = RELEASE_DIR / "udp_gateway_shadow_mirror_wrapper.bit"
 STAGED_APP = RELEASE_DIR / "ax7020_udp_gateway_shadow_mirror_app.elf"
 BENCH_SCRIPT = REPO_ROOT / "scripts" / "day21_performance_benchmark.py"
+BENCH_MATRIX_SCRIPT = REPO_ROOT / "scripts" / "day21_benchmark_matrix.py"
 SEND_UDP_TEST = REPO_ROOT / "handoff" / "robeieda_porting_pack" / "tools" / "send_udp_crypto_test.py"
 THESIS_DATA = REPO_ROOT / "doc" / "reports" / "THESIS_DATA_TABLE.md"
 
@@ -106,6 +108,22 @@ def _extract_control_invocation_expression(text: str, label: str) -> str:
 
 
 class TestUdpGatewayShadowMirrorRelease(unittest.TestCase):
+    def test_shadow_export_tcl_explicitly_keeps_inactive_shadow_security_extras_disabled(self):
+        export_tcl = EXPORT_TCL.read_text(encoding="ascii")
+
+        for token in (
+            "proc keep_shadow_inactive_sources_disabled {}",
+            '"rtl/security/config_packet_auth.sv"',
+            '"rtl/security/key_vault.sv"',
+            '"rtl/core/crypto/crypto_engine.sv"',
+            '"rtl/security/five_tuple_extractor.sv"',
+            "set_property is_enabled false $file_obj",
+            "set_property used_in_synthesis false $file_obj",
+            "set_property used_in_implementation false $file_obj",
+            "keep_shadow_inactive_sources_disabled",
+        ):
+            self.assertIn(token, export_tcl)
+
     def test_shadow_mirror_assets_exist(self):
         for required in (
             APP_MAIN,
@@ -119,6 +137,7 @@ class TestUdpGatewayShadowMirrorRelease(unittest.TestCase):
             SHADOW_PHASEC_XDC,
             DEPLOY,
             PERF_CHECK,
+            BENCH_MATRIX_CHECK,
             ACL_CHECK,
             FASTPATH_CHECK,
             SECURITY_CHECK,
@@ -142,6 +161,24 @@ class TestUdpGatewayShadowMirrorRelease(unittest.TestCase):
             STAGED_APP,
         ):
             self.assertTrue(required.exists(), f"Expected shadow mirror asset missing: {required}")
+
+    def test_shadow_export_tcl_keeps_module_ref_auto_compile_support(self):
+        export_tcl = EXPORT_TCL.read_text(encoding="ascii")
+
+        self.assertNotIn("proc enable_shadow_wrapper_manual_compile_order {}", export_tcl)
+        self.assertIn('set_property source_mgmt_mode All [current_project]', export_tcl)
+        self.assertNotIn('set_property source_mgmt_mode None [current_project]', export_tcl)
+        self.assertIn("update_compile_order -fileset sources_1", export_tcl)
+        self.assertIn("lock_shadow_wrapper_top", export_tcl)
+        self.assertNotIn('launch_runs $shadow_child_runs -scripts_only', export_tcl)
+        self.assertIn('launch_runs synth_1 -scripts_only', export_tcl)
+
+    def test_shadow_export_ps1_avoids_project_xml_surgery(self):
+        export_ps1 = EXPORT_XSA.read_text(encoding="utf-8")
+
+        self.assertNotIn("function Repair-ShadowMirrorProjectTop", export_ps1)
+        self.assertNotIn("Set-Content -Path $ProjectPath", export_ps1)
+        self.assertNotIn("Repair-ShadowMirrorProjectTop -ProjectPath $projectFile", export_ps1)
 
     def test_shadow_mirror_app_contract(self):
         text = APP_MAIN.read_text(encoding="ascii")
@@ -182,6 +219,21 @@ class TestUdpGatewayShadowMirrorRelease(unittest.TestCase):
             "udp_gateway_shadow_mirror_wrapper.bit",
             "ax7020_udp_gateway_shadow_mirror_app.elf",
             "ax7020_udp_gateway_shadow_mirror",
+            "legacyGatewayBspDir",
+            "legacyGatewayLwipSrcDir",
+            "legacyGatewayBspProcessorRoot",
+            "legacyGatewayBspIncludeDir",
+            "legacyGatewayBspLibDir",
+            "legacyGatewayExportLwipLib",
+            "Resolve-GnuMakePath",
+            "Update-LegacyLwipLibrary",
+            'Join-Path $VitisRoot "gnuwin\\bin\\make.exe"',
+            '$makeArgs[3] = "clean"',
+            '$makeArgs[3] = "libs"',
+            'Failed to clean legacy lwIP objects under $LegacyGatewayLwipSrcDir',
+            'Failed to rebuild legacy lwIP BSP library under $LegacyGatewayLwipSrcDir',
+            'Copy-Item -Path $lwipLib -Destination $LegacyGatewayExportLwipLib -Force',
+            "liblwip4.a",
         ):
             self.assertIn(token, build_app + build_boot)
 
@@ -208,9 +260,10 @@ class TestUdpGatewayShadowMirrorRelease(unittest.TestCase):
             self.assertIn(token, export_tcl)
 
         self.assertNotIn("force_auto_compile_order", export_tcl)
-        self.assertIn("proc enable_shadow_wrapper_auto_hierarchy {}", export_tcl)
-        self.assertIn("set_property source_mgmt_mode All [current_project]", export_tcl)
+        self.assertNotIn("proc enable_shadow_wrapper_manual_compile_order {}", export_tcl)
+        self.assertNotIn("set_property source_mgmt_mode None [current_project]", export_tcl)
         self.assertIn("update_compile_order -fileset sources_1", export_tcl)
+        self.assertIn("lock_shadow_wrapper_top", export_tcl)
         self.assertIn("bootgen -read", build_boot)
         self.assertIn('Join-Path $workspace "sd_boot\\ax7020_udp_gateway_shadow_mirror"', build_boot)
         self.assertIn('ax7020_udp_gateway_shadow_mirror_app.elf', build_boot)
@@ -263,6 +316,22 @@ class TestUdpGatewayShadowMirrorRelease(unittest.TestCase):
         job_block = _extract_shadow_job_struct(gateway_text)
         self.assertNotIn("struct pbuf *", job_block)
         self.assertNotIn("const uint8_t *payload;", job_block)
+
+    def test_shadow_app_build_prefers_legacy_uart_headers_before_toolchain_fsbl_headers(self):
+        build_app = BUILD_APP.read_text(encoding="ascii")
+
+        legacy_include_index = build_app.index(
+            'if ((Test-Path $legacyGatewayBspIncludeDir) -and (Test-Path (Join-Path $legacyGatewayBspIncludeDir "netif\\xadapter.h"))) {'
+        )
+        toolchain_include_index = build_app.index(
+            'if ((Test-Path $libraryIncludeDir) -and ($libraryIncludeDir -ne $includeDir)) {'
+        )
+
+        self.assertLess(
+            legacy_include_index,
+            toolchain_include_index,
+            "Legacy BSP headers should be added before toolchain/FSBL headers so UART driver headers do not come from zynq_fsbl_bsp first",
+        )
 
     def test_shadow_mirror_security_check_contract(self):
         text = SECURITY_CHECK.read_text(encoding="ascii")
@@ -340,13 +409,14 @@ class TestUdpGatewayShadowMirrorRelease(unittest.TestCase):
             "ConvertFrom-Json",
             "avg_speedup",
             "Performance target not met",
-            "UART log is missing required performance evidence lines",
+            'Write-Warning ("UART log is missing supplemental performance evidence lines:',
         ):
             self.assertIn(token, perf_check)
 
         self.assertNotIn('"SHADOW_AES PASS"', perf_check)
         self.assertNotIn('"SHADOW_SM4 PASS"', perf_check)
         self.assertNotIn('"UDP gateway shadow mirror PASS"', perf_check)
+        self.assertNotIn('throw ("UART log is missing required performance evidence lines:', perf_check)
         self.assertNotIn(
             '"UDP crypto gateway started @ ports 4660(AES) 4661(SM4) 4662(CTRL)",' + "\n    \"LIVE_CTRL PASS\"",
             perf_check,
@@ -445,6 +515,84 @@ class TestUdpGatewayShadowMirrorRelease(unittest.TestCase):
             "gateway_store_be_word(&record[8], hw_us);",
         ):
             self.assertIn(token, gateway_text)
+
+    def test_shadow_bench_matrix_board_check_contract(self):
+        self.assertTrue(
+            BENCH_MATRIX_CHECK.exists(),
+            f"Expected benchmark matrix board-check script missing: {BENCH_MATRIX_CHECK}",
+        )
+        bench_matrix_check = BENCH_MATRIX_CHECK.read_text(encoding="ascii")
+
+        for token in (
+            "run_ax7020_udp_gateway_shadow_mirror_bench_matrix.ps1",
+            '[switch]$AssumeRunning',
+            '[string]$Port = "COM9"',
+            '[int]$Baud = 115200',
+            '[string]$TargetIp = "192.168.1.20"',
+            '[string]$SourceIp = "192.168.1.11"',
+            '[int]$BootLeadSeconds = 20',
+            '[int]$RequestsPerScenario = 200',
+            '[int]$BenchRepeats = 1000',
+            'Join-Path $workspace "capture_uart_boot_log.ps1"',
+            'Join-Path $repoRoot "scripts\\day21_benchmark_matrix.py"',
+            'Join-Path $repoRoot ("doc\\reports\\board_bench_matrix\\shadow_mirror_{0}" -f $stamp)',
+            'Start-Process -FilePath "powershell"',
+            'Start-Process -FilePath "py.exe"',
+            'UART capture started. Log path:',
+            'Assuming board is already running; skipping power-cycle prompt and boot wait.',
+            'Power-cycle the board now: turn power off for 3 seconds, then power it back on.',
+            'Start-Sleep -Seconds $BootLeadSeconds',
+            '"--target-ip", $TargetIp',
+            '"--source-ip", $SourceIp',
+            '"--requests-per-scenario", "$RequestsPerScenario"',
+            '"--repeats", "$BenchRepeats"',
+            '"--output-dir", $reportDir',
+            'bench_matrix_report.json',
+            'bench_matrix_summary.md',
+            'bench_matrix_results.csv',
+        ):
+            self.assertIn(token, bench_matrix_check)
+
+    def test_shadow_bench_matrix_board_check_logs_artifact_paths(self):
+        bench_matrix_check = BENCH_MATRIX_CHECK.read_text(encoding="ascii")
+
+        for token in (
+            '$summaryPath = Join-Path $reportDir "bench_matrix_summary.md"',
+            '$jsonPath = Join-Path $reportDir "bench_matrix_report.json"',
+            '$csvPath = Join-Path $reportDir "bench_matrix_results.csv"',
+            'Write-Host "==== BENCH MATRIX ARTIFACTS ===="',
+            'Write-Host ("bench_matrix_report.json: {0}" -f $jsonPath)',
+            'Write-Host ("bench_matrix_summary.md: {0}" -f $summaryPath)',
+            'Write-Host ("bench_matrix_results.csv: {0}" -f $csvPath)',
+        ):
+            self.assertIn(token, bench_matrix_check)
+
+    def test_shadow_bench_matrix_board_check_uart_hard_fail_contract(self):
+        bench_matrix_check = BENCH_MATRIX_CHECK.read_text(encoding="ascii")
+        uart_hard_fail_patterns = _extract_powershell_array_assignment(
+            bench_matrix_check,
+            "uartHardFailPatterns",
+        )
+
+        self.assertIn('"shadow compare fail"', uart_hard_fail_patterns)
+        self.assertIn('"SHADOW_FASTPATH FALLBACK"', uart_hard_fail_patterns)
+        for token in (
+            "UDP gateway shadow mirror image",
+            "UDP crypto gateway started @ ports 4660(AES) 4661(SM4) 4662(CTRL)",
+            "LIVE_CTRL PASS",
+            "LIVE_AES PASS",
+            "LIVE_SM4 PASS",
+            "SHADOW_AES PASS",
+            "SHADOW_SM4 PASS",
+            "SHADOW_INVALID_SKIP PASS",
+            "UDP gateway shadow mirror PASS",
+        ):
+            self.assertNotIn(token, uart_hard_fail_patterns)
+
+        self.assertIn('$bootBannerLines = @(', bench_matrix_check)
+        self.assertIn('Write-Warning ("UART log is missing supplemental boot banner lines:', bench_matrix_check)
+        self.assertNotIn('throw ("UART log is missing required boot banner lines:', bench_matrix_check)
+        self.assertIn('throw ("UART log contains hard-fail lines: {0}" -f ($uartHardFailHits -join ", "))', bench_matrix_check)
 
     def test_shadow_acl_board_check_places_session_binding_args_after_subcommand(self):
         acl_check = ACL_CHECK.read_text(encoding="ascii")
@@ -553,6 +701,8 @@ class TestUdpGatewayShadowMirrorRelease(unittest.TestCase):
         perf_check = PERF_CHECK.read_text(encoding="ascii")
         self.assertIn('$requiredPassLines = @(', perf_check)
         self.assertIn('"LIVE_CTRL PASS"', perf_check)
+        self.assertIn('Write-Warning ("UART log is missing supplemental performance evidence lines:', perf_check)
+        self.assertNotIn('throw ("UART log is missing required performance evidence lines:', perf_check)
         self.assertNotIn(
             '"UDP crypto gateway started @ ports 4660(AES) 4661(SM4) 4662(CTRL)",' + "\n    \"LIVE_CTRL PASS\"",
             perf_check,
@@ -583,7 +733,8 @@ class TestUdpGatewayShadowMirrorRelease(unittest.TestCase):
 
         for token in (
             "run_ax7020_udp_gateway_shadow_mirror_fastpath_board_check.ps1",
-            "udp_crypto_control.py",
+            'handoff\\robeieda_porting_pack\\tools\\udp_crypto_control.py',
+            "send_udp_crypto_test.py",
             "hello",
             "set-key",
             "LIVE_AES PASS",
@@ -597,13 +748,52 @@ class TestUdpGatewayShadowMirrorRelease(unittest.TestCase):
             "TXCAP words=",
             "UART capture started. Log path:",
             "fastpath board check completed",
+            "FASTPATH_EVIDENCE_MODE",
+            "xsct.bat",
+            "mrd -value",
+            "--expect-any-reply",
         ):
             self.assertIn(token, fastpath_check)
+        self.assertNotIn("--skip-control-session", fastpath_check)
 
         self.assertNotIn("SHADOW_FASTPATH HIT", fastpath_check)
-        self.assertNotIn("Wrapper CSR Probe", fastpath_check)
-        self.assertNotIn("send_udp_crypto_test.py", fastpath_check)
         self.assertNotIn("derive_binding_aware_expected", fastpath_check)
+
+    def test_shadow_fastpath_board_check_uses_udp_helper_for_live_probes(self):
+        fastpath_check = FASTPATH_CHECK.read_text(encoding="ascii")
+
+        for token in (
+            '$controlScript = Join-Path $repoRoot "handoff\\robeieda_porting_pack\\tools\\udp_crypto_control.py"',
+            '$sendTool = Join-Path $repoRoot "handoff\\robeieda_porting_pack\\tools\\send_udp_crypto_test.py"',
+            'Invoke-PythonLogged -Label "AES"',
+            'Invoke-PythonLogged -Label "SM4"',
+            '"--expect-any-reply"',
+            'throw "AES helper failed with exit code $($aesProbe.ExitCode)"',
+            'throw "SM4 helper failed with exit code $($sm4Probe.ExitCode)"',
+        ):
+            self.assertIn(token, fastpath_check)
+        self.assertNotIn('"--skip-control-session"', fastpath_check)
+
+    def test_shadow_fastpath_board_check_reports_empty_uart_capture_clearly(self):
+        fastpath_check = FASTPATH_CHECK.read_text(encoding="ascii")
+
+        self.assertIn('$uartLines = @(Get-Content $uartLogPath)', fastpath_check)
+        self.assertIn("if ($uartLines.Count -eq 0) {", fastpath_check)
+        self.assertIn('throw "UART log captured no data; fastpath evidence unavailable"', fastpath_check)
+
+    def test_shadow_fastpath_board_check_supports_xsct_fallback_when_uart_is_unusable(self):
+        fastpath_check = FASTPATH_CHECK.read_text(encoding="ascii")
+
+        for token in (
+            '[string]$XsctPath = "D:\\Xilinx\\Vitis\\2024.1\\bin\\xsct.bat"',
+            'function Invoke-XsctScript',
+            'function Get-FastpathCsrSnapshot',
+            'FASTPATH_EVIDENCE_MODE=xsct_csr_fallback',
+            'if ($AssumeRunning -and $baselineFastpathSnapshot) {',
+            'if ($txcapStorageEnabled -and ($hitDelta -ge 2) -and ($fallbackDelta -eq 0)) {',
+            'Write-Host ("TXCAP_WORDS_AFTER={0}" -f $txcapWordsAfter)',
+        ):
+            self.assertIn(token, fastpath_check)
 
     def test_shadow_security_board_check_contract(self):
         self.assertTrue(
@@ -777,6 +967,63 @@ class TestUdpGatewayShadowMirrorRelease(unittest.TestCase):
             "Close-UartSerialPort -SerialRef ([ref]$serial)",
         ):
             self.assertIn(token, capture_uart)
+        self.assertNotIn('Switching UART capture baud from {0} to {1} after empty probe.', capture_uart)
+        self.assertIn("reopen the port so we can latch onto the re-enumerated boot stream.", capture_uart)
+
+    def test_capture_uart_boot_log_auto_detects_baud_and_rejects_gibberish(self):
+        capture_uart = CAPTURE_UART.read_text(encoding="ascii")
+
+        for token in (
+            "function Get-UartBaudCandidates",
+            "function Test-UartCaptureLooksSane",
+            "$captureLooksSane = Test-UartCaptureLooksSane -Data $bytes",
+            "$sampleCount = [Math]::Min($bytes.Count, 256)",
+            "$printableCount = 0",
+            "$printableRatio = if ($sampleCount -gt 0)",
+            "$baudCandidates = Get-UartBaudCandidates -PreferredBaud $Baud",
+            "$activeBaud = $baudCandidates[$currentBaudIndex]",
+            "Switching UART capture baud from",
+            "DetectedBaud={2} Bytes={3} CaptureLooksSane={4} PrintableRatio={5}",
+            '$printableThreshold = 0.85',
+            'Write-Warning "Captured UART bytes did not decode as sane printable text; treat UART evidence as unreliable."',
+        ):
+            self.assertIn(token, capture_uart)
+
+    def test_capture_uart_boot_log_program_board_uses_shadow_mirror_jtag_runner(self):
+        capture_uart = CAPTURE_UART.read_text(encoding="ascii")
+
+        for token in (
+            'Join-Path $workspace "run_ax7020_udp_gateway_shadow_mirror_jtag.ps1"',
+            'function Resolve-CaptureProgrammerXsctPath',
+            '-XsctPath', '$programmerXsctPath',
+        ):
+            self.assertIn(token, capture_uart)
+
+        self.assertNotIn('Join-Path $workspace "run_board_smoke.ps1"', capture_uart)
+
+    def test_capture_uart_boot_log_starts_serial_capture_before_program_board(self):
+        capture_uart = CAPTURE_UART.read_text(encoding="ascii")
+
+        for token in (
+            '$programProc = $null',
+            '$programLaunchStarted = $false',
+            'if ($ProgramBoard -and (-not $programLaunchStarted) -and $serial -and $serial.IsOpen) {',
+            'Start-Process -FilePath "powershell"',
+            'Wait-Process -Id $programProc.Id',
+            '==== PROGRAM SCRIPT OUTPUT ====',
+        ):
+            self.assertIn(token, capture_uart)
+
+    def test_capture_uart_boot_log_refreshes_program_process_before_exit_code_check(self):
+        capture_uart = CAPTURE_UART.read_text(encoding="ascii")
+
+        for token in (
+            '$programProc.Refresh()',
+            '$programExitCode = $programProc.ExitCode',
+            '$programSucceeded = ($programOutput -match "JTAG_RUN_DONE")',
+            'throw "ProgramBoard runner did not report JTAG_RUN_DONE"',
+        ):
+            self.assertIn(token, capture_uart)
 
     def test_send_udp_crypto_test_supports_expect_any_reply_mode(self):
         send_udp_test = SEND_UDP_TEST.read_text(encoding="utf-8")
@@ -915,7 +1162,6 @@ class TestUdpGatewayShadowMirrorRelease(unittest.TestCase):
 
         for token in (
             "create_generated_clock",
-            "create_pblock live_crypto_region",
             "create_pblock shadow_data_region",
             "create_pblock shadow_ctrl_region",
             "udp_gateway_shadow_mirror_i/crypto_accel_axi_0/inst",
@@ -926,11 +1172,12 @@ class TestUdpGatewayShadowMirrorRelease(unittest.TestCase):
             "udp_gateway_shadow_mirror_i/dma_gateway_hybrid_0/inst/gen_shadow_inject_only.u_shadow_inject",
             "udp_gateway_shadow_mirror_i/dma_gateway_hybrid_0/inst/u_device_dna_reader/s_axil_rdata*",
             "NAME !~ udp_gateway_shadow_mirror_i/dma_gateway_hybrid_0/inst/u_device_dna_reader/s_axil_rdata*",
-            "set_property IS_SOFT TRUE [get_pblocks live_crypto_region]",
             "set_property IS_SOFT TRUE [get_pblocks shadow_data_region]",
             "set_property IS_SOFT TRUE [get_pblocks shadow_ctrl_region]",
         ):
             self.assertIn(token, phasec_xdc)
+        self.assertNotIn("create_pblock live_crypto_region", phasec_xdc)
+        self.assertNotIn("set_property IS_SOFT TRUE [get_pblocks live_crypto_region]", phasec_xdc)
         self.assertNotIn("shadow_core_region", phasec_xdc)
 
     def test_shadow_export_tcl_cleans_stale_raw_bd_artifacts(self):
@@ -942,6 +1189,13 @@ class TestUdpGatewayShadowMirrorRelease(unittest.TestCase):
             "set raw_designs [get_bd_designs -quiet $raw_bd_name]",
             "catch {close_bd_design $raw_designs}",
             "catch {remove_files [get_files -quiet $raw_bd]}",
+            'set stale_raw_project_files [concat \\',
+            '[get_files -quiet [file join $workspace_root "HCS_SOC.srcs" "sources_1" "bd" $raw_bd_name *]] \\',
+            '[get_files -quiet [file join $workspace_root "HCS_SOC.gen" "sources_1" "bd" $raw_bd_name *]] \\',
+            'foreach stale_raw_fileset [get_filesets -quiet "${raw_bd_name}_*"] {',
+            'catch {delete_fileset $stale_raw_fileset}',
+            'foreach stale_raw_run [get_runs -quiet "${raw_bd_name}_*"] {',
+            'catch {delete_run $stale_raw_run}',
             'foreach stale_crypto_fileset [get_filesets -quiet "${raw_bd_name}_crypto_accel_axi_0_0*"] {',
             'catch {delete_fileset $stale_crypto_fileset}',
             "set stale_crypto_ip_files [concat \\",
@@ -950,6 +1204,20 @@ class TestUdpGatewayShadowMirrorRelease(unittest.TestCase):
             "[file dirname $raw_bd]",
             "[file join $workspace_root \"HCS_SOC.gen\" \"sources_1\" \"bd\" $raw_bd_name]",
             "file delete -force $stale_path",
+        ):
+            self.assertIn(token, export_tcl)
+
+    def test_shadow_export_tcl_detaches_inactive_system_bd_and_wrapper_runs(self):
+        export_tcl = EXPORT_TCL.read_text(encoding="ascii")
+
+        for token in (
+            'remove_orphan_project_file [file join $workspace_root "HCS_SOC.srcs" "sources_1" "bd" "system" "system.bd"]',
+            'set stale_system_bd_files [get_files -quiet [file join $workspace_root "HCS_SOC.srcs" "sources_1" "bd" "system" *]]',
+            'catch {remove_files $stale_system_bd_files}',
+            'foreach stale_system_fileset [get_filesets -quiet "system_dma_subsystem_v2_wra_0_0*"] {',
+            'catch {delete_fileset $stale_system_fileset}',
+            'foreach stale_system_run [get_runs -quiet "system_dma_subsystem_v2_wra_0_0*"] {',
+            'catch {delete_run $stale_system_run}',
         ):
             self.assertIn(token, export_tcl)
 
@@ -968,6 +1236,24 @@ class TestUdpGatewayShadowMirrorRelease(unittest.TestCase):
         ):
             self.assertIn(token, export_tcl)
 
+    def test_shadow_export_tcl_reopens_project_after_generate_target_before_registering_generated_wrappers(self):
+        export_tcl = EXPORT_TCL.read_text(encoding="ascii")
+
+        generate_target_idx = export_tcl.index("generate_target all $raw_bd_obj")
+        export_ip_idx = export_tcl.index("export_ip_user_files -of_objects $raw_bd_obj -sync -force -quiet")
+        reopen_close_idx = export_tcl.index("close_project", export_ip_idx)
+        reopen_open_idx = export_tcl.index("open_project -quiet $project_file", reopen_close_idx)
+        crypto_wrapper_idx = export_tcl.index("set crypto_ref_synth_wrappers [glob -nocomplain $crypto_ref_synth_wrapper_pattern]")
+        reopen_raw_bd_idx = export_tcl.index("set raw_bd_obj [lindex [get_files -quiet $raw_bd] 0]", reopen_open_idx)
+        reopen_bd_design_idx = export_tcl.index("open_bd_design $raw_bd", reopen_open_idx)
+
+        self.assertLess(generate_target_idx, export_ip_idx)
+        self.assertLess(export_ip_idx, reopen_close_idx)
+        self.assertLess(reopen_close_idx, reopen_open_idx)
+        self.assertLess(reopen_open_idx, reopen_raw_bd_idx)
+        self.assertLess(reopen_raw_bd_idx, reopen_bd_design_idx)
+        self.assertLess(reopen_bd_design_idx, crypto_wrapper_idx)
+
     def test_shadow_export_tcl_cleans_shadow_run_dirs_and_generates_scripts_before_launch(self):
         export_tcl = EXPORT_TCL.read_text(encoding="ascii")
 
@@ -976,9 +1262,6 @@ class TestUdpGatewayShadowMirrorRelease(unittest.TestCase):
             'proc lock_shadow_wrapper_top {} {',
             'foreach stale_run_dir [glob -nocomplain [file join $runs_root "${raw_bd_name}_*"]] {',
             'file delete -force $stale_run_dir',
-            'catch {create_ip_run $raw_bd_obj}',
-            'set shadow_child_runs [get_runs -quiet "${raw_bd_name}_*_synth_1"]',
-            'launch_runs $shadow_child_runs -scripts_only',
             'set src_fileset [get_filesets sources_1]',
             'set_property top_auto_set 0 $src_fileset',
             'set_property top udp_gateway_shadow_mirror_wrapper $src_fileset',
@@ -987,12 +1270,45 @@ class TestUdpGatewayShadowMirrorRelease(unittest.TestCase):
             'foreach required_run_name [list \\',
             '${raw_bd_name}_processing_system7_0_0_synth_1',
             '${raw_bd_name}_dma_gateway_hybrid_0_0_synth_1',
-            '${raw_bd_name}_crypto_accel_axi_0_0_synth_1',
             '[file join $runs_root $required_run_name "${required_run_name_no_step}.tcl"]',
             'required OOC run script missing after -scripts_only generation',
             'launch_runs synth_1 -jobs 8',
         ):
             self.assertIn(token, export_tcl)
+
+        self.assertNotIn('catch {create_ip_run $raw_bd_obj}', export_tcl)
+        self.assertNotIn('set shadow_child_runs [get_runs -quiet "${raw_bd_name}_*_synth_1"]', export_tcl)
+        self.assertNotIn('launch_runs $shadow_child_runs -scripts_only', export_tcl)
+        self.assertIn('close_project', export_tcl)
+        self.assertIn('open_project -quiet $project_file', export_tcl)
+        self.assertLess(
+            export_tcl.index('foreach stale_raw_run [get_runs -quiet "${raw_bd_name}_*"] {'),
+            export_tcl.index('close_project'),
+        )
+        self.assertLess(
+            export_tcl.index('close_project'),
+            export_tcl.index('foreach src_info {'),
+        )
+        self.assertLess(
+            export_tcl.index('open_project -quiet $project_file', export_tcl.index('close_project') + 1),
+            export_tcl.index('foreach src_info {'),
+        )
+        self.assertLess(
+            export_tcl.index('close_project'),
+            export_tcl.index('open_bd_design $source_bd'),
+        )
+        self.assertLess(
+            export_tcl.index('export_ip_user_files -of_objects $raw_bd_obj -sync -force -quiet'),
+            export_tcl.index('close_project', export_tcl.index('export_ip_user_files -of_objects $raw_bd_obj -sync -force -quiet')),
+        )
+        self.assertLess(
+            export_tcl.index('close_project', export_tcl.index('export_ip_user_files -of_objects $raw_bd_obj -sync -force -quiet')),
+            export_tcl.index('open_project -quiet $project_file', export_tcl.index('close_project', export_tcl.index('export_ip_user_files -of_objects $raw_bd_obj -sync -force -quiet'))),
+        )
+        self.assertLess(
+            export_tcl.index('open_project -quiet $project_file', export_tcl.index('close_project', export_tcl.index('export_ip_user_files -of_objects $raw_bd_obj -sync -force -quiet'))),
+            export_tcl.index('set crypto_ref_synth_wrappers [glob -nocomplain $crypto_ref_synth_wrapper_pattern]'),
+        )
 
 
 if __name__ == "__main__":

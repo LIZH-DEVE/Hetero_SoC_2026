@@ -44,6 +44,24 @@ SEND_UDP_TEST = (
     / "send_udp_crypto_test.py"
 )
 HANDOFF_UDP_CONTROL_PY = REPO_ROOT / "handoff" / "robeieda_porting_pack" / "tools" / "udp_crypto_control.py"
+LEGACY_LWIP_XADAPTER_C = (
+    REPO_ROOT
+    / "HCS_SOC"
+    / "vitis_2023_udp_gateway_ws_2"
+    / "ax7020_udp_gateway_platform"
+    / "ps7_cortexa9_0"
+    / "standalone_domain"
+    / "bsp"
+    / "ps7_cortexa9_0"
+    / "libsrc"
+    / "lwip213_v1_0"
+    / "src"
+    / "contrib"
+    / "ports"
+    / "xilinx"
+    / "netif"
+    / "xadapter.c"
+)
 
 
 def _extract_function_block(text: str, signature: str) -> str:
@@ -132,6 +150,17 @@ class TestUdpGatewayShadowRuntimeContracts(unittest.TestCase):
         cls.udp_control_py = UDP_CONTROL_PY.read_text(encoding="utf-8")
         cls.send_udp_test = SEND_UDP_TEST.read_text(encoding="utf-8")
         cls.handoff_udp_control_py = HANDOFF_UDP_CONTROL_PY.read_text(encoding="utf-8")
+
+    def test_uart_gateway_uses_driver_header_without_reincluding_hw_header(self):
+        self.assertIn('#include "xuartps.h"', self.text)
+        self.assertNotIn('#include "xuartps_hw.h"', self.text)
+
+    def test_legacy_lwip_eth_link_detect_handles_all_known_xemac_types(self):
+        xadapter_text = LEGACY_LWIP_XADAPTER_C.read_text(encoding="ascii")
+        link_detect = _extract_function_block(xadapter_text, "void eth_link_detect(struct netif *netif)")
+
+        self.assertIn("case xemac_type_unknown:", link_detect)
+        self.assertIn("case xemac_type_xps_ll_temac:", link_detect)
 
     def test_shadow_job_uses_slot_metadata_not_raw_pointers(self):
         text = self.text
@@ -277,6 +306,24 @@ class TestUdpGatewayShadowRuntimeContracts(unittest.TestCase):
 
     def test_uart_diagnostics_do_not_use_xil_printf_long_formats(self):
         long_printf = re.compile(r'xil_printf\s*\(\s*"[^"\n]*%[0-9]*l[duxX][^"\n]*"', re.S)
+        xemacpsif_text = (
+            REPO_ROOT
+            / "HCS_SOC"
+            / "vitis_2023_udp_gateway_ws_2"
+            / "ax7020_udp_gateway_platform"
+            / "ps7_cortexa9_0"
+            / "standalone_domain"
+            / "bsp"
+            / "ps7_cortexa9_0"
+            / "libsrc"
+            / "lwip213_v1_0"
+            / "src"
+            / "contrib"
+            / "ports"
+            / "xilinx"
+            / "netif"
+            / "xemacpsif.c"
+        ).read_text(encoding="utf-8")
 
         self.assertIsNone(
             long_printf.search(self.text),
@@ -285,6 +332,14 @@ class TestUdpGatewayShadowRuntimeContracts(unittest.TestCase):
         self.assertIsNone(
             long_printf.search(self.shadow_main_text),
             "shadow mirror main.c still uses xil_printf long-width formats",
+        )
+        self.assertIsNotNone(
+            re.search(r"static unsigned long g_xemacpsif_dbg_pkt_count = 0;", xemacpsif_text),
+            "xemacpsif.c no longer keeps packet counters in unsigned long form",
+        )
+        self.assertIsNotNone(
+            re.search(r'xil_printf\("xemacpsif_input: pkt=%lu ethertype=0x%04x len=%u', xemacpsif_text),
+            "xemacpsif.c no longer emits the board-proven %lu packet diagnostic",
         )
 
     def test_shadow_wrapper_axi_master_interfaces_cap_burst_and_outstanding_depth(self):
@@ -424,6 +479,8 @@ class TestUdpGatewayShadowRuntimeContracts(unittest.TestCase):
         text = self.text
         service_block = _extract_function_block(text, "static void gateway_shadow_service(")
 
+        self.assertIn("#define GATEWAY_FASTPATH_STATUS_TXCAP_STORAGE_SHIFT 6U", text)
+        self.assertIn("#define GATEWAY_FASTPATH_STATUS_TXCAP_STORAGE_MASK 0x00000001U", text)
         self.assertIn("#define GATEWAY_FASTPATH_STATUS_REASON_SHIFT 2U", text)
         self.assertIn("#define GATEWAY_FASTPATH_STATUS_REASON_MASK 0x0000000FU", text)
         self.assertIn("#define GATEWAY_FASTPATH_REASON_ACL_DROP 3U", text)
@@ -455,6 +512,19 @@ class TestUdpGatewayShadowRuntimeContracts(unittest.TestCase):
         self.assertLess(
             service_block.index("if (acl_count != job->acl_count_base) {"),
             service_block.index("if (gateway_shadow_poll_active_job(&csw) != 0) {"),
+        )
+
+    def test_shadow_wrapper_fastpath_status_encodes_txcap_storage_mode_without_moving_reason_bits(self):
+        text = self.shadow_wrapper
+
+        self.assertIn("localparam integer FASTPATH_STATUS_TXCAP_STORAGE_SHIFT = 6;", text)
+        self.assertIn(
+            "assign fastpath_status          = (32'd1 << FASTPATH_STATUS_TXCAP_STORAGE_SHIFT) |",
+            text,
+        )
+        self.assertIn(
+            "{26'd0, fastpath_last_reason_q, fastpath_last_hit_q, ctrl_fastpath_en};",
+            text,
         )
 
     def test_bench_contract_uses_same_board_sw_and_hw_paths(self):
@@ -536,7 +606,7 @@ class TestUdpGatewayShadowRuntimeContracts(unittest.TestCase):
 
     def test_sync_hw_path_uses_cross_call_key_ctrl_cache(self):
         text = self.text
-        block = _extract_function_block(text, "static int gateway_hw_encrypt_buffer_sync(")
+        block = _extract_function_block(text, "static int GATEWAY_MAYBE_UNUSED gateway_hw_encrypt_buffer_sync(")
 
         for token in (
             "gateway_hw_sync_cache_t",
@@ -550,6 +620,14 @@ class TestUdpGatewayShadowRuntimeContracts(unittest.TestCase):
         self.assertNotIn("gateway_load_key_hw_sync(algo, effective_key);", block)
         self.assertNotIn("gateway_backend_write_ctrl(gateway_ctrl_word(algo));", block)
 
+    def test_sync_hw_path_marks_sync_encrypt_helper_unused_when_shadow_build_is_enabled(self):
+        text = self.text
+
+        self.assertIn("#if UDP_GATEWAY_ENABLE_SHADOW_MIRROR", text)
+        self.assertIn("#define GATEWAY_MAYBE_UNUSED __attribute__((unused))", text)
+        self.assertIn("#define GATEWAY_MAYBE_UNUSED", text)
+        self.assertIn("static int GATEWAY_MAYBE_UNUSED gateway_hw_encrypt_buffer_sync(", text)
+
     def test_sync_hw_cache_invalidates_on_session_mutations(self):
         lock_block = _extract_function_block(self.text, "static void gateway_lock_session(")
         unlock_block = _extract_function_block(self.text, "static void gateway_unlock_session(")
@@ -562,7 +640,7 @@ class TestUdpGatewayShadowRuntimeContracts(unittest.TestCase):
 
     def test_sync_pull_block_reads_four_words_without_per_word_polling(self):
         pull_block = _extract_function_block(self.text, "static void sync_pull_block_4words(")
-        sync_block = _extract_function_block(self.text, "static int gateway_hw_encrypt_buffer_sync(")
+        sync_block = _extract_function_block(self.text, "static int GATEWAY_MAYBE_UNUSED gateway_hw_encrypt_buffer_sync(")
 
         self.assertIn("sync_pull_block_4words(&output[offset]);", sync_block)
         self.assertNotIn("gateway_backend_read_status(", pull_block)
@@ -704,12 +782,17 @@ class TestUdpGatewayShadowRuntimeContracts(unittest.TestCase):
             "fastpath_hit_count_q",
             "fastpath_fallback_count_q",
             "txcap_read_data_q",
-            "txcap_payload_mem",
+            "txcap_payload_rd_pending_q",
+            "u_txcap_payload_mem",
             "if (!ctrl_fastpath_en) begin",
             "txcap_count_q < FASTPATH_TXCAP_DEPTH",
             "((aclf_tdata[15:0] - 16'd8) >> 2) + FASTPATH_HDR_WORDS <= FASTPATH_TXCAP_DEPTH",
-            '(* RAM_STYLE = "BLOCK" *) reg [31:0] txcap_payload_mem',
-            "txcap_payload_mem[txcap_payload_wr_ptr_q] <= aclf_tdata;",
+            "xpm_memory_sdpram #(",
+            '.MEMORY_PRIMITIVE("block")',
+            ".ena(txcap_payload_wr_en)",
+            ".dina(aclf_tdata)",
+            ".enb(txcap_payload_rd_fire)",
+            ".doutb(txcap_payload_rd_data)",
             "txcap_read_data_q <=",
             "classifier_dma_tdata",
             "classifier_dma_tvalid",
@@ -1054,7 +1137,6 @@ class TestUdpGatewayShadowRuntimeContracts(unittest.TestCase):
             "create_generated_clock",
             "-divide_by 32",
             "dna_done_sync_ff",
-            "create_pblock live_crypto_region",
             "create_pblock shadow_data_region",
             "create_pblock shadow_ctrl_region",
             "udp_gateway_shadow_mirror_i/crypto_accel_axi_0/inst",
@@ -1065,12 +1147,11 @@ class TestUdpGatewayShadowRuntimeContracts(unittest.TestCase):
             "udp_gateway_shadow_mirror_i/dma_gateway_hybrid_0/inst/gen_shadow_inject_only.u_shadow_inject",
             "udp_gateway_shadow_mirror_i/dma_gateway_hybrid_0/inst/u_device_dna_reader/s_axil_rdata*",
             "NAME !~ udp_gateway_shadow_mirror_i/dma_gateway_hybrid_0/inst/u_device_dna_reader/s_axil_rdata*",
-            "set_property IS_SOFT TRUE [get_pblocks live_crypto_region]",
             "set_property IS_SOFT TRUE [get_pblocks shadow_data_region]",
             "set_property IS_SOFT TRUE [get_pblocks shadow_ctrl_region]",
-            "SLICE_X24Y99:SLICE_X113Y149",
             "SLICE_X0Y0:SLICE_X113Y49",
             "SLICE_X26Y50:SLICE_X95Y98",
+            "SLICE_X0Y100:SLICE_X95Y149",
             "SLICE_X96Y50:SLICE_X113Y98",
             "RAMB36_X3Y0:RAMB36_X5Y11",
             "RAMB18_X3Y24:RAMB18_X3Y31",
@@ -1079,6 +1160,8 @@ class TestUdpGatewayShadowRuntimeContracts(unittest.TestCase):
 
         self.assertIn("ensure_constraint_source", export_tcl)
         self.assertIn("add_files -fileset constrs_1 -norecurse", export_tcl)
+        self.assertNotIn("create_pblock live_crypto_region", xdc)
+        self.assertNotIn("set_property IS_SOFT TRUE [get_pblocks live_crypto_region]", xdc)
         self.assertNotIn("shadow_core_region", xdc)
         self.assertNotIn("concat", xdc)
         self.assertNotIn("foreach", xdc)
@@ -1207,7 +1290,7 @@ class TestUdpGatewayShadowRuntimeContracts(unittest.TestCase):
             self.assertIn(token, text)
 
     def test_sync_hw_scheduler_uses_single_status_snapshot_per_iteration(self):
-        block = _extract_function_block(self.text, "static int gateway_hw_encrypt_buffer_sync(")
+        block = _extract_function_block(self.text, "static int GATEWAY_MAYBE_UNUSED gateway_hw_encrypt_buffer_sync(")
 
         self.assertIn("while (blocks_completed < blocks_total)", block)
         self.assertEqual(1, block.count("status = gateway_backend_read_status();"))
@@ -1217,7 +1300,7 @@ class TestUdpGatewayShadowRuntimeContracts(unittest.TestCase):
 
     def test_sync_hw_scheduler_uses_window_two_and_drain_fallback(self):
         text = self.text
-        block = _extract_function_block(text, "static int gateway_hw_encrypt_buffer_sync(")
+        block = _extract_function_block(text, "static int GATEWAY_MAYBE_UNUSED gateway_hw_encrypt_buffer_sync(")
 
         self.assertIn("#define GATEWAY_SYNC_WINDOW_BLOCKS 2U", text)
         self.assertIn("blocks_inflight < GATEWAY_SYNC_WINDOW_BLOCKS", block)
@@ -1228,7 +1311,7 @@ class TestUdpGatewayShadowRuntimeContracts(unittest.TestCase):
 
     def test_sync_hw_scheduler_tracks_watchdog_and_diag_counters(self):
         text = self.text
-        block = _extract_function_block(text, "static int gateway_hw_encrypt_buffer_sync(")
+        block = _extract_function_block(text, "static int GATEWAY_MAYBE_UNUSED gateway_hw_encrypt_buffer_sync(")
 
         for token in (
             "typedef struct {",
@@ -1513,6 +1596,22 @@ class TestUdpGatewayShadowRuntimeContracts(unittest.TestCase):
             "if (sink_bytes_written > sink_progress_sticky_q)",
             "assign csr_debug_source_progress = source_progress_sticky_q;",
             "assign csr_debug_sink_progress = sink_progress_sticky_q;",
+        ):
+            self.assertIn(token, text)
+
+    def test_crypto_dma_subsystem_forwards_s2mm_awvalid(self):
+        text = self.crypto_dma_subsystem
+
+        self.assertIn("assign m_axis_s2mm_awvalid = s2mm_awvalid;", text)
+        self.assertIn(".m_axis_awvalid(s2mm_awvalid)", text)
+
+    def test_crypto_dma_subsystem_propagates_ingress_error_into_pbm_rollback(self):
+        text = self.crypto_dma_subsystem
+
+        for token in (
+            "input  logic                   rx_wr_error,",
+            ".i_wr_valid(rx_wr_valid), .i_wr_data(rx_wr_data), .i_wr_last(rx_wr_last), .i_wr_error(rx_wr_error),",
+            ".o_rollback_active()",
         ):
             self.assertIn(token, text)
 

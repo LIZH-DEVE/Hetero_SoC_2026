@@ -9,6 +9,12 @@
 #define UDP_GATEWAY_ENABLE_SHADOW_MIRROR 0
 #endif
 
+#if UDP_GATEWAY_ENABLE_SHADOW_MIRROR
+#define GATEWAY_MAYBE_UNUSED __attribute__((unused))
+#else
+#define GATEWAY_MAYBE_UNUSED
+#endif
+
 #if !UDP_GATEWAY_SMOKE_ONLY_BUILD
 #include "lwip/err.h"
 #include "lwip/ip_addr.h"
@@ -22,7 +28,6 @@
 #include "xil_mmu.h"
 #include "xil_printf.h"
 #include "xuartps.h"
-#include "xuartps_hw.h"
 #include "xtime_l.h"
 
 #include "udp_crypto_gateway.h"
@@ -162,6 +167,8 @@
 #define GATEWAY_SHADOW_ACL_WRITE_PULSE 0x00000100U
 #define GATEWAY_SHADOW_ACL_CLEAR_PULSE 0x00000200U
 #define GATEWAY_SHADOW_FASTPATH_EN 0x00000800U
+#define GATEWAY_FASTPATH_STATUS_TXCAP_STORAGE_SHIFT 6U
+#define GATEWAY_FASTPATH_STATUS_TXCAP_STORAGE_MASK 0x00000001U
 #define GATEWAY_FASTPATH_STATUS_REASON_SHIFT 2U
 #define GATEWAY_FASTPATH_STATUS_REASON_MASK 0x0000000FU
 #define GATEWAY_FASTPATH_REASON_IDLE 0U
@@ -2843,7 +2850,7 @@ static void sync_pull_block_4words(uint8_t *out_block)
     }
 }
 
-static int gateway_hw_encrypt_buffer_sync(uint32_t session_id,
+static int GATEWAY_MAYBE_UNUSED gateway_hw_encrypt_buffer_sync(uint32_t session_id,
                                           gateway_algo_t algo,
                                           const uint8_t *effective_key,
                                           const uint8_t *input,

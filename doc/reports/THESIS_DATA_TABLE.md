@@ -1,82 +1,129 @@
-# DMA Crypto Thesis Data Table (Draft)
+# DMA Crypto Thesis Data Table
 
-Data source:
-- Simulation log: `HCS_SOC/HCS_SOC.sim/sim_1/behav/xsim/tb_dma_subsystem_crypto_encdec_report.log`
-- Clock: 100 MHz (`CLK_PERIOD_NS = 10 ns`)
-- Run switches in current log:
-  - `RUN_FUNC=0 RUN_TP_AES=0 RUN_TP_SM4=1 RUN_BACKPRESSURE=0 RUN_KEY_SWITCH=0 RUN_STABILITY=0`
-  - `THROUGHPUT_WARMUP=1 THROUGHPUT_REPEAT=3`
-- Run result summary:
-  - `Tests: total=1 pass=0 fail=1`
-  - `Checks: total=4 pass=3 fail=1`
-  - `SuccessRate: 75.00%`
-  - `OVERALL RESULT: FAIL`
+Board-first acceptance source:
+- `scripts/day21_performance_benchmark.py --bench-ip ...`
+- `HCS_SOC/run_ax7020_udp_gateway_shadow_mirror_performance_check.ps1`
+- Real AX7020 board `BENCH` control responses
 
-## Module 1: Performance (Simulation)
+Rule:
+- Only real AX7020 board benchmark captures may fill acceptance rows.
+- Simulation data may be cited separately as supporting analysis, but must not be used as acceptance evidence.
 
-| Algorithm | Size | Avg Throughput (MB/s) | Avg Latency (cycles) | Avg Latency (ns) | Status |
-|---|---:|---:|---:|---:|---|
-| AES | 1 KB | 132.64 | 772 | 7,720 | Collected |
-| AES | 10 KB | 205.99 | 4,974 | 49,740 | Collected |
-| AES | 100 KB | 219.49 | 46,654 | 466,540 | Collected |
-| AES | 1 MB | 220.57 | 475,396 | 4,753,960 | Collected |
-| SM4 | 1 KB | 130.45 | 785 | 7,850 | Collected (below target) |
-| SM4 | 10 KB | 205.46 | 4,987 | 49,870 | Collected |
-| SM4 | 100 KB | 219.43 | 46,667 | 466,670 | Collected |
-| SM4 | 1 MB | 220.56 | 475,409 | 4,754,090 | Collected |
+Current status:
+- Current baseline board capture collected from `shadow_mirror_20260329_231856`.
+- Current final acceptance capture collected from `shadow_mirror_20260405_204158`.
+- Current acceptance bar for this phase is `avg_speedup >= 1.0x` per algorithm.
+- `16 B / 32 B short-payload rows may remain below 1.0x`; acceptance is judged by average speedup, not isolated short rows.
+- Historical baseline result was valid but below target:
+  - AES avg speedup = `0.601748x`
+  - SM4 avg speedup = `0.226816x`
+- Stage 2 SG proof contract is now defined as `single-launch` descriptor batching with `1000 repeats`.
+- Stage 2 SG proof is board-proven from `hybrid_perf_proof_20260331_181431`:
+  - AES avg speedup = `4.877192x`
+  - SM4 avg speedup = `2.847728x`
+- Final `shadow_mirror` merge-back is board-proven and performance-proven from `shadow_mirror_20260405_204158`:
+  - AES avg speedup = `2.773757x`
+  - SM4 avg speedup = `2.102749x`
+- Final acceptance image SHA256 = `8D8501A0FD5A59B8511DA88507E20068DFC3D866E7E9CCD1A8AD47F50B2C8A72`
+- SD cold-start post-confirmation is board-proven from `2026-04-02_shadow_mirror_cold_start_post_confirmation.md`
+- Long-run JTAG soak is board-proven from `board_soak/shadow_mirror_20260401_224117`:
+  - result = `PASS`
+  - cycles completed = `128`
+  - AES probes = `128`
+  - SM4 probes = `128`
+  - ACL probes = `12`
+  - replay probes = `6`
+- SD cold-start soak is board-proven from `board_soak/shadow_mirror_20260402_215701`:
+  - result = `PASS`
+  - cycles completed = `124`
+  - AES probes = `124`
+  - SM4 probes = `124`
+  - ACL probes = `12`
+  - replay probes = `6`
+  - evidence mode = `control_data_after_manual_power_cycle`
+
+## Module 1: Performance (Board Acceptance)
+
+| Algorithm | Size | SW Total (us) | HW Total (us) | SW Avg Latency (us) | HW Avg Latency (us) | SW Throughput (MB/s) | HW Throughput (MB/s) | Status |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| AES | 16 B | 4899 | 3186 | 4.899000 | 3.186000 | 3.114674 | 4.789325 | Final acceptance PASS |
+| AES | 32 B | 9039 | 4293 | 9.039000 | 4.293000 | 3.376212 | 7.108683 | Final acceptance PASS |
+| AES | 128 B | 33807 | 11050 | 33.807000 | 11.050000 | 3.610800 | 11.047087 | Final acceptance PASS |
+| AES | 512 B | 132880 | 37920 | 132.880000 | 37.920000 | 3.674603 | 12.876615 | Final acceptance PASS |
+| AES | 1472 B | 380826 | 105118 | 380.826000 | 105.118000 | 3.686220 | 13.354598 | Final acceptance PASS |
+| SM4 | 16 B | 2641 | 2455 | 2.641000 | 2.455000 | 5.777656 | 6.215393 | Final acceptance PASS |
+| SM4 | 32 B | 3935 | 2862 | 3.935000 | 2.862000 | 7.755420 | 10.663025 | Final acceptance PASS |
+| SM4 | 128 B | 11585 | 5279 | 11.585000 | 5.279000 | 10.536928 | 23.123757 | Final acceptance PASS |
+| SM4 | 512 B | 42185 | 14892 | 42.185000 | 14.892000 | 11.574760 | 32.788158 | Final acceptance PASS |
+| SM4 | 1472 B | 118688 | 38995 | 118.688000 | 38.995000 | 11.827721 | 35.999707 | Final acceptance PASS |
 
 Notes:
-- Current run has functional pass for 16-block roundtrip:
-  - AES roundtrip: PASS
-  - SM4 roundtrip: PASS
-- In this run, check `AES throughput >= 150MB/s @1024B` is FAIL; 10KB/100KB/1MB are PASS.
-- In current SM4-only run, `SM4 throughput >= 150MB/s` fails only at `1024B`; 10KB/100KB/1MB are PASS.
+- PS software baseline = same-board `gateway_sw_encrypt_buffer()`
+- Final hardware path = same-board descriptor-driven DMA batch executor merged back into `shadow_mirror` BENCH
+- `SW Total (us)` and `HW Total (us)` are totals across `repeats`; average latency is derived as `total_us / repeats`
+- Acceptance gate for this phase: `avg_speedup >= 1.0x`
+- `16 B / 32 B short-payload rows may remain below 1.0x`
+- Stage 2 SG proof target: `single-launch` batching with `1000 repeats`
+- Stage 2 SG proof artifacts must report `Descriptor count`, `Doorbell count`, and last-descriptor polling evidence
 
 ## Module 2: Implementation (Vivado Reports)
 
 | Item | Value | Status | Source |
 |---|---:|---|---|
-| SM4 core LUT/FF | TBD | Pending | `report_utilization -hierarchical` |
-| AES core LUT/FF | TBD | Pending | `report_utilization -hierarchical` |
-| Total LUT | TBD | Pending | `report_utilization` |
-| Total Power (W) | TBD | Pending | `report_power` |
-| Timing (Fmax / WNS) | TBD | Pending | `report_timing_summary` |
+| SM4 core LUT/FF | Pending | Pending | `report_utilization -hierarchical` |
+| AES core LUT/FF | Pending | Pending | `report_utilization -hierarchical` |
+| Total LUT | `25736 / 53200 = 48.38%` | Collected | `udp_gateway_shadow_mirror_wrapper_utilization_placed.rpt` |
+| Total FF | `30299 / 106400 = 28.48%` | Collected | `udp_gateway_shadow_mirror_wrapper_utilization_placed.rpt` |
+| Block RAM Tile | `0.36%` | Collected | `udp_gateway_shadow_mirror_wrapper_utilization_placed.rpt` |
+| Slice usage | `12419 / 13300 = 93.38%` | Collected | `udp_gateway_shadow_mirror_wrapper_utilization_placed.rpt` |
+| Total Power (W) | Pending | Pending | `report_power` |
+| Timing (Fmax / WNS) | Pending | Pending | `report_timing_summary` |
 
 ## Module 3: Analytical Derivation
 
 | Item | Formula | Current Value | Status |
 |---|---|---:|---|
-| Software-hardware speedup | `HW_throughput / SW_throughput` | TBD | Pending |
-| Stall factor | `1 - HW_bw / Bus_peak_bw` | TBD | Pending |
-| AES area efficiency | `AES_Mbps / AES_LUT` | TBD | Pending |
-| SM4 area efficiency | `SM4_Mbps / SM4_LUT` | TBD | Pending |
+| Hardware speedup vs PS software | `HW_throughput / SW_throughput` | AES `2.773757x`, SM4 `2.102749x` | Final acceptance PASS |
+| AES area efficiency | `AES_Mbps / AES_LUT` | Pending | Pending implementation reports |
+| SM4 area efficiency | `SM4_Mbps / SM4_LUT` | Pending | Pending implementation reports |
+| Stall factor | `1 - HW_bw / Bus_peak_bw` | Pending | Pending implementation reports |
 
 ## Module 4: Reliability / Mechanism
 
 | Item | Current Result | Status |
 |---|---|---|
-| AES 16-block roundtrip | PASS | Collected |
-| SM4 16-block roundtrip | PASS | Collected |
-| Throughput test count | `test_throughput_sm4=FAIL` (only 1KB threshold miss) | Collected |
-| Backpressure | Not run in this data batch | Pending |
-| Key switch | Not run in this data batch | Pending |
-| Stability (10000 ops) | Not run in this data batch | Pending |
+| Live AES functional path | Board-proven PASS | Collected |
+| Live SM4 functional path | Board-proven PASS | Collected |
+| Shadow AES mirror path | Board-proven PASS | Collected |
+| Shadow SM4 mirror path | Board-proven PASS | Collected |
+| DNA binding path | Board-proven PASS | Collected |
+| ACL enforcement | Board-proven PASS | Collected |
+| Replay rejection / lock / re-auth | Board-proven PASS | Collected |
+| Wrong-port / unaligned contract | Board-proven PASS | Collected |
+| Board performance BENCH capture | Final acceptance captured from `shadow_mirror_20260405_204158` | Collected |
+| Stage 2 SG proof | `single-launch` descriptor batch board-proven from `hybrid_perf_proof_20260331_181431` | Collected |
+| Full `shadow_mirror` merge-back | Board-proven and performance-proven on `xc7z020` | Collected |
+| JTAG soak stability | `30` minute mixed soak PASS from `board_soak/shadow_mirror_20260401_224117` | Collected |
+| SD cold-start soak stability | `30` minute cold-start soak PASS from `board_soak/shadow_mirror_20260402_215701` | Collected |
 
-## Fast Fill Commands
+## Capture Commands
 
-```tcl
-# Utilization / power / timing
-open_run impl_1
-report_utilization -hierarchical -file util_hier.rpt
-report_utilization -file util_top.rpt
-report_power -file power.rpt
-report_timing_summary -file timing.rpt
+```powershell
+powershell -ExecutionPolicy Bypass -File D:\FPGAhanjia\Hetero_SoC_2026_3\Hetero_SoC_2026\HCS_SOC\run_ax7020_udp_gateway_shadow_mirror_performance_check.ps1 -Deploy -SdDrive E:
 ```
 
-```tcl
-# Throughput-only run (SM4)
-close_sim
-set_property -name {xsim.simulate.xsim.more_options} -value {+RUN_FUNC=0 +RUN_TP_AES=0 +RUN_TP_SM4=1 +RUN_BACKPRESSURE=0 +RUN_KEY_SWITCH=0 +RUN_STABILITY=0 +THROUGHPUT_SIZE_COUNT=4 +THROUGHPUT_REPEAT=3 +THROUGHPUT_WARMUP=1 +PBM_COMMIT_WORDS=256 +RESET_EACH_TRANSFER=0} [get_filesets sim_1]
-launch_simulation
-run all
+```powershell
+py -3 D:\FPGAhanjia\Hetero_SoC_2026_3\Hetero_SoC_2026\scripts\day21_performance_benchmark.py --bench-ip 192.168.1.20 --source-ip 192.168.1.11 --algos aes,sm4 --repeats 1000 --output-dir D:\FPGAhanjia\Hetero_SoC_2026_3\Hetero_SoC_2026\doc\reports\board_benchmarks\manual_run
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File D:\FPGAhanjia\Hetero_SoC_2026_3\Hetero_SoC_2026\HCS_SOC\run_ax7020_dma_gateway_hybrid_perf_proof_board_check.ps1 -Deploy -SdDrive E:
+```
+
+```powershell
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File D:\FPGAhanjia\Hetero_SoC_2026_3\Hetero_SoC_2026\HCS_SOC\run_ax7020_udp_gateway_shadow_mirror_soak_check.ps1 -AssumeRunning
+```
+
+```powershell
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File D:\FPGAhanjia\Hetero_SoC_2026_3\Hetero_SoC_2026\HCS_SOC\run_ax7020_udp_gateway_shadow_mirror_soak_check.ps1 -ColdStart -DurationMinutes 30 -CycleIntervalSeconds 15
 ```
