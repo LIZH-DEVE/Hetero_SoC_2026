@@ -71,6 +71,61 @@ proc mark_shadow_wrapper_sources {wrapper_files} {
     }
 }
 
+proc ensure_shadow_fastpath_tx_pins_external {} {
+    set wrapper_cell [get_bd_cells -quiet dma_gateway_hybrid_0]
+    if {[llength $wrapper_cell] == 0} {
+        error "dma_gateway_hybrid_0 not found while exposing zero-copy fastpath egress pins"
+    }
+
+    catch {update_module_reference $wrapper_cell}
+
+    set axis_intf_pin [get_bd_intf_pins -quiet dma_gateway_hybrid_0/o_tx_axis]
+    if {[llength $axis_intf_pin] == 0} {
+        error "ZERO_COPY_FASTPATH_EGRESS_STEP1 missing refreshed BD interface pin dma_gateway_hybrid_0/o_tx_axis"
+    }
+
+    if {[llength [get_bd_intf_ports -quiet o_tx_axis]] == 0} {
+        set before_ports [get_bd_intf_ports]
+        make_bd_intf_pins_external $axis_intf_pin
+
+        set new_ports {}
+        foreach intf_port [get_bd_intf_ports] {
+            if {[lsearch -exact $before_ports $intf_port] < 0} {
+                lappend new_ports $intf_port
+            }
+        }
+
+        if {[llength $new_ports] != 1} {
+            error "ZERO_COPY_FASTPATH_EGRESS_STEP1 expected exactly one new external AXIS port, got [llength $new_ports]"
+        }
+
+        set_property name o_tx_axis [lindex $new_ports 0]
+    }
+
+    set tready_pin [get_bd_pins -quiet dma_gateway_hybrid_0/i_tx_axis_tready]
+    if {[llength $tready_pin] == 0} {
+        error "ZERO_COPY_FASTPATH_EGRESS_STEP1 missing refreshed BD pin dma_gateway_hybrid_0/i_tx_axis_tready"
+    }
+
+    if {[llength [get_bd_ports -quiet i_tx_axis_tready]] == 0} {
+        set before_ports [get_bd_ports]
+        make_bd_pins_external $tready_pin
+
+        set new_ports {}
+        foreach bd_port [get_bd_ports] {
+            if {[lsearch -exact $before_ports $bd_port] < 0} {
+                lappend new_ports $bd_port
+            }
+        }
+
+        if {[llength $new_ports] != 1} {
+            error "ZERO_COPY_FASTPATH_EGRESS_STEP1 expected exactly one new scalar tready port, got [llength $new_ports]"
+        }
+
+        set_property name i_tx_axis_tready [lindex $new_ports 0]
+    }
+}
+
 proc keep_shadow_inactive_sources_disabled {} {
     global repo_root
 
@@ -224,6 +279,8 @@ assign_bd_address -offset 0x43C00000 -range 64K \
     -target_address_space [get_bd_addr_spaces processing_system7_0/Data] \
     [get_bd_addr_segs crypto_accel_axi_0/s00_axi/reg0] -force
 
+# ZERO_COPY_FASTPATH_EGRESS_STEP1: refresh module_ref ports after wrapper TX egress exposure
+ensure_shadow_fastpath_tx_pins_external
 validate_bd_design
 save_bd_design
 catch {close_bd_design [current_bd_design]}

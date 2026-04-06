@@ -177,6 +177,15 @@ class TestUdpGatewayShadowMirrorRelease(unittest.TestCase):
         self.assertIn("lock_shadow_wrapper_top", export_tcl)
         self.assertNotIn('launch_runs $shadow_child_runs -scripts_only', export_tcl)
         self.assertIn('launch_runs synth_1 -scripts_only', export_tcl)
+        for token in (
+            "open_bd_design $raw_bd",
+            "validate_bd_design",
+            "save_bd_design",
+            "generate_target all $raw_bd_obj",
+            "export_ip_user_files -of_objects $raw_bd_obj -sync -force -quiet",
+            "ZERO_COPY_FASTPATH_EGRESS_STEP1",
+        ):
+            self.assertIn(token, export_tcl)
 
     def test_shadow_export_ps1_avoids_project_xml_surgery(self):
         export_ps1 = EXPORT_XSA.read_text(encoding="utf-8")

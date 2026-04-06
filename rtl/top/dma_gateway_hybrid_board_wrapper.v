@@ -107,7 +107,13 @@ module dma_gateway_hybrid_board_wrapper #(
     input  wire [1:0]              m_axi_fetcher_rresp,
     input  wire                    m_axi_fetcher_rlast,
     input  wire                    m_axi_fetcher_rvalid,
-    output wire                    m_axi_fetcher_rready
+    output wire                    m_axi_fetcher_rready,
+
+    output wire [31:0]             o_tx_axis_tdata,
+    output wire                    o_tx_axis_tvalid,
+    output wire                    o_tx_axis_tlast,
+    output wire [3:0]              o_tx_axis_tkeep,
+    input  wire                    i_tx_axis_tready
 );
 
     localparam [7:0] WRAP_REG_DROP_WRONG_PORT_COUNT = 8'hCC;
@@ -164,6 +170,10 @@ module dma_gateway_hybrid_board_wrapper #(
     wire                  ctrl_irq_ack_unused;
     wire [31:0]           ctrl_irq_count_unused;
     wire [31:0]           ctrl_irq_timeout_unused;
+    wire [31:0]           fastpath_tx_axis_tdata;
+    wire                  fastpath_tx_axis_tvalid;
+    wire                  fastpath_tx_axis_tlast;
+    wire [3:0]            fastpath_tx_axis_tkeep;
 
     wire                  stage1_network_enable;
     wire                  stage1_ingress_inject_sel;
@@ -862,6 +872,10 @@ module dma_gateway_hybrid_board_wrapper #(
     );
 
     assign dma_irq = 1'b0;
+    assign o_tx_axis_tdata = fastpath_tx_axis_tdata;
+    assign o_tx_axis_tvalid = fastpath_tx_axis_tvalid;
+    assign o_tx_axis_tlast = fastpath_tx_axis_tlast;
+    assign o_tx_axis_tkeep = fastpath_tx_axis_tkeep;
 
     crypto_dma_subsystem #(
         .ADDR_WIDTH(ADDR_WIDTH),
@@ -896,11 +910,11 @@ module dma_gateway_hybrid_board_wrapper #(
         .rx_wr_cbc_mode(classifier_dma_cbc_mode),
         .rx_wr_iv_header(classifier_dma_iv_header),
         .rx_wr_ready(classifier_dma_tready),
-        .tx_axis_tdata(),
-        .tx_axis_tvalid(),
-        .tx_axis_tlast(),
-        .tx_axis_tkeep(),
-        .tx_axis_tready(1'b0),
+        .tx_axis_tdata(fastpath_tx_axis_tdata),
+        .tx_axis_tvalid(fastpath_tx_axis_tvalid),
+        .tx_axis_tlast(fastpath_tx_axis_tlast),
+        .tx_axis_tkeep(fastpath_tx_axis_tkeep),
+        .tx_axis_tready(i_tx_axis_tready),
         .m_axis_awaddr(m_axi_dma_wr_awaddr),
         .m_axis_awlen(m_axi_dma_wr_awlen),
         .m_axis_awsize(m_axi_dma_wr_awsize),
