@@ -1,0 +1,16 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2024.1 (win64) Build 5076996 Wed May 22 18:37:14 MDT 2024
+| Date         : Thu Apr  2 07:47:04 2026
+| Host         : LAPTOP-96UDD738 running 64-bit major release  (build 9200)
+| Command      : report_cdc -details -file D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/doc/reports/engineering_evidence/shadow_mirror_20260402_074522/fresh_reports/udp_gateway_shadow_mirror_wrapper_cdc_routed.rpt
+| Design       : udp_gateway_shadow_mirror_wrapper
+| Device       : 7z020-clg400
+| Speed File   : -1  PRODUCTION 1.12 2019-11-22
+| Design State : Physopt postRoute
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+CDC Report
+
+All paths are Safely Timed.
+

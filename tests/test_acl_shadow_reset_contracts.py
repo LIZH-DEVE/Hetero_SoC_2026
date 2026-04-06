@@ -11,6 +11,10 @@ PBM_CONTROLLER = REPO_ROOT / "rtl" / "core" / "pbm" / "pbm_controller.sv"
 DMA_INGRESS_CLASSIFIER = REPO_ROOT / "rtl" / "core" / "dma" / "udp_dma_ingress_classifier.sv"
 SHADOW_WRAPPER = REPO_ROOT / "rtl" / "top" / "dma_gateway_hybrid_board_wrapper.v"
 SHADOW_INJECT_PATH = REPO_ROOT / "rtl" / "top" / "udp_gateway_shadow_inject_path.sv"
+CRYPTO_BRIDGE_TOP = REPO_ROOT / "rtl" / "core" / "crypto" / "crypto_bridge_top.sv"
+AXIL_CSR = REPO_ROOT / "rtl" / "core" / "axil_csr.sv"
+DMA_CRYPTO_SOURCE_READER = REPO_ROOT / "rtl" / "core" / "dma" / "dma_crypto_source_reader.sv"
+AXIS_PACKET_FIFO_BRAM = REPO_ROOT / "rtl" / "core" / "dma" / "axis_packet_fifo_bram.sv"
 
 
 ALWAYS_FF_RE = re.compile(r"always_ff\s*@\((.*?)\)\s*begin")
@@ -160,6 +164,54 @@ class TestAclShadowResetContracts(unittest.TestCase):
         self.assertIn("always_ff @(posedge clk) begin", text)
         self.assertNotIn("always_ff @(posedge clk or negedge rst_n) begin", text)
         self.assertIn("inj_packet_complete <= 1'b0;", text)
+
+    def test_shadow_inject_fifo_uses_distributed_memory_to_avoid_bram_writefirst_advisory(self):
+        text = SHADOW_INJECT_PATH.read_text(encoding="ascii")
+        self.assertIn("xpm_fifo_sync #(", text)
+        self.assertIn('.FIFO_MEMORY_TYPE("distributed")', text)
+        self.assertIn('.READ_MODE("fwft")', text)
+        self.assertNotIn('.FIFO_MEMORY_TYPE("block")', text)
+
+    def test_crypto_bridge_input_scheduler_state_is_no_longer_async_reset(self):
+        text = CRYPTO_BRIDGE_TOP.read_text(encoding="utf-8")
+        self.assertIn("always_ff @(posedge clk) begin", text)
+        self.assertIn("input_state <= ST_IDLE;", text)
+        self.assertIn("cap_cnt <= 3'd0;", text)
+        self.assertIn("req_cnt <= 3'd0;", text)
+        self.assertNotIn("always_ff @(posedge clk or negedge rst_n) begin\n        if (!rst_n) begin\n            input_state <= ST_IDLE;", text)
+
+    def test_axil_csr_exports_ring_and_loopback_through_sync_shadow_regs(self):
+        text = AXIL_CSR.read_text(encoding="ascii")
+        for token in (
+            "logic [31:0] reg_loopback_mode_sync;",
+            "logic [31:0] reg_ring_size_sync;",
+            "always_ff @(posedge clk) begin",
+            "reg_loopback_mode_sync <= 32'd0;",
+            "reg_ring_size_sync <= 32'd0;",
+            "reg_loopback_mode_sync <= reg_loopback_mode;",
+            "reg_ring_size_sync <= reg_ring_size;",
+            "assign o_loopback_mode = reg_loopback_mode_sync[1:0];",
+            "assign o_ring_size   = reg_ring_size_sync;",
+        ):
+            self.assertIn(token, text)
+
+        self.assertNotIn("assign o_loopback_mode = reg_loopback_mode[1:0];", text)
+        self.assertNotIn("assign o_ring_size   = reg_ring_size;", text)
+
+    def test_dma_crypto_source_reader_state_is_no_longer_async_reset(self):
+        text = DMA_CRYPTO_SOURCE_READER.read_text(encoding="ascii")
+        self.assertIn("always_ff @(posedge clk) begin", text)
+        self.assertNotIn("always_ff @(posedge clk or negedge rst_n) begin", text)
+        self.assertIn("read_state <= READ_IDLE;", text)
+        self.assertIn("rd_valid_q <= 1'b0;", text)
+
+    def test_axis_packet_fifo_bram_state_is_no_longer_async_reset(self):
+        text = AXIS_PACKET_FIFO_BRAM.read_text(encoding="ascii")
+        self.assertIn("always_ff @(posedge clk) begin", text)
+        self.assertNotIn("always_ff @(posedge clk or negedge rst_n) begin", text)
+        self.assertIn("wr_ptr  <= '0;", text)
+        self.assertIn("rd_ptr  <= '0;", text)
+        self.assertIn("level_q <= '0;", text)
 
 
 if __name__ == "__main__":

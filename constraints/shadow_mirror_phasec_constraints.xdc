@@ -13,22 +13,14 @@ create_generated_clock \
 set_property ASYNC_REG TRUE \
   [get_cells -hierarchical -quiet -filter {NAME =~ */u_device_dna_reader/dna_done_sync_ff* && IS_SEQUENTIAL}]
 
-# Floorplan the three dominant islands by resource band:
-# 1) live crypto compute island in the top slice band
-# 2) shadow datapath island across the bottom full-width band plus the middle BRAM-adjacent band
-# 3) shadow service island in the narrow middle-right control pocket
-
-create_pblock live_crypto_region
-add_cells_to_pblock [get_pblocks live_crypto_region] [get_cells -quiet [list \
-  udp_gateway_shadow_mirror_i/crypto_accel_axi_0/inst \
-]]
-resize_pblock [get_pblocks live_crypto_region] -add { \
-  SLICE_X24Y99:SLICE_X113Y149 \
-}
-set_property IS_SOFT TRUE [get_pblocks live_crypto_region]
+# Floorplan the two dominant islands by resource band:
+# 1) merged compute/data island across the bottom full-width band, the middle BRAM-adjacent band,
+#    and the top compute slice band
+# 2) shadow service island in the narrow middle-right control pocket
 
 create_pblock shadow_data_region
 add_cells_to_pblock [get_pblocks shadow_data_region] [get_cells -quiet [list \
+  udp_gateway_shadow_mirror_i/crypto_accel_axi_0/inst \
   udp_gateway_shadow_mirror_i/dma_gateway_hybrid_0/inst/i_hybrid_dma \
   udp_gateway_shadow_mirror_i/dma_gateway_hybrid_0/inst/u_shadow_acl_filter \
   udp_gateway_shadow_mirror_i/dma_gateway_hybrid_0/inst/u_classifier \
@@ -38,6 +30,7 @@ add_cells_to_pblock [get_pblocks shadow_data_region] [get_cells -quiet -hierarch
 resize_pblock [get_pblocks shadow_data_region] -add { \
   SLICE_X0Y0:SLICE_X113Y49 \
   SLICE_X26Y50:SLICE_X95Y98 \
+  SLICE_X0Y100:SLICE_X95Y149 \
   RAMB36_X3Y0:RAMB36_X5Y11 \
 }
 set_property IS_SOFT TRUE [get_pblocks shadow_data_region]

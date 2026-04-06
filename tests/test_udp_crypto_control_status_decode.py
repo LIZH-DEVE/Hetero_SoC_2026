@@ -1,6 +1,8 @@
 import importlib.util
 import pathlib
+import subprocess
 import struct
+import sys
 import unittest
 
 
@@ -134,6 +136,34 @@ class TestUdpCryptoControlStatusDecode(unittest.TestCase):
         self.assertEqual(decoded["replay_seen"], 1)
         self.assertEqual(decoded["timeout_seen"], 0)
         self.assertEqual(decoded["reauth_seen"], 1)
+
+    def test_handoff_cli_exposes_expect_status_and_seq_id(self):
+        help_result = subprocess.run(
+            [sys.executable, str(HANDOFF_CONTROL_PY), "--help"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(help_result.returncode, 0, help_result.stderr)
+        self.assertIn("--expect-status", help_result.stdout)
+
+        set_key_help = subprocess.run(
+            [sys.executable, str(HANDOFF_CONTROL_PY), "set-key", "--help"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(set_key_help.returncode, 0, set_key_help.stderr)
+        self.assertIn("--seq-id", set_key_help.stdout)
+
+        status_help = subprocess.run(
+            [sys.executable, str(HANDOFF_CONTROL_PY), "status", "--help"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(status_help.returncode, 0, status_help.stderr)
+        self.assertIn("--seq-id", status_help.stdout)
 
 
 if __name__ == "__main__":

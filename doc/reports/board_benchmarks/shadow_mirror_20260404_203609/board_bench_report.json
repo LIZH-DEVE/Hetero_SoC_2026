@@ -1,0 +1,158 @@
+{
+  "timestamp": "2026-04-04T20:36:10.496562",
+  "mode": "board_bench",
+  "acceptance_eligible": true,
+  "baseline": "ps_software_same_board",
+  "target": {
+    "ip": "192.168.1.20",
+    "source_ip": "192.168.1.11",
+    "control_port": 4662,
+    "repeats": 1000,
+    "speedup": 1.0
+  },
+  "session": {
+    "session_id": 10,
+    "binding_id": 3300527179
+  },
+  "results": {
+    "aes": {
+      "algo": "aes",
+      "repeats": 1000,
+      "records": [
+        {
+          "length_bytes": 16,
+          "workload_bytes": 16000,
+          "sw_total_us": 4914,
+          "hw_total_us": 3181,
+          "sw_avg_latency_us": 4.914,
+          "hw_avg_latency_us": 3.181,
+          "sw_throughput_mb_s": 3.105167,
+          "hw_throughput_mb_s": 4.796853,
+          "speedup": 1.544797
+        },
+        {
+          "length_bytes": 32,
+          "workload_bytes": 32000,
+          "sw_total_us": 9059,
+          "hw_total_us": 4293,
+          "sw_avg_latency_us": 9.059,
+          "hw_avg_latency_us": 4.293,
+          "sw_throughput_mb_s": 3.368758,
+          "hw_throughput_mb_s": 7.108683,
+          "speedup": 2.110179
+        },
+        {
+          "length_bytes": 128,
+          "workload_bytes": 128000,
+          "sw_total_us": 33917,
+          "hw_total_us": 11050,
+          "sw_avg_latency_us": 33.917,
+          "hw_avg_latency_us": 11.05,
+          "sw_throughput_mb_s": 3.599089,
+          "hw_throughput_mb_s": 11.047087,
+          "speedup": 3.069412
+        },
+        {
+          "length_bytes": 512,
+          "workload_bytes": 512000,
+          "sw_total_us": 133350,
+          "hw_total_us": 37921,
+          "sw_avg_latency_us": 133.35,
+          "hw_avg_latency_us": 37.921,
+          "sw_throughput_mb_s": 3.661652,
+          "hw_throughput_mb_s": 12.876276,
+          "speedup": 3.516521
+        },
+        {
+          "length_bytes": 1472,
+          "workload_bytes": 1472000,
+          "sw_total_us": 382195,
+          "hw_total_us": 105120,
+          "sw_avg_latency_us": 382.195,
+          "hw_avg_latency_us": 105.12,
+          "sw_throughput_mb_s": 3.673017,
+          "hw_throughput_mb_s": 13.354344,
+          "speedup": 3.635797
+        }
+      ],
+      "summary": {
+        "record_count": 5,
+        "min_speedup": 1.544797,
+        "max_speedup": 3.635797,
+        "avg_speedup": 2.775341
+      },
+      "meets_target": true
+    },
+    "sm4": {
+      "algo": "sm4",
+      "repeats": 1000,
+      "records": [
+        {
+          "length_bytes": 16,
+          "workload_bytes": 16000,
+          "sw_total_us": 2638,
+          "hw_total_us": 2452,
+          "sw_avg_latency_us": 2.638,
+          "hw_avg_latency_us": 2.452,
+          "sw_throughput_mb_s": 5.784226,
+          "hw_throughput_mb_s": 6.222997,
+          "speedup": 1.075856
+        },
+        {
+          "length_bytes": 32,
+          "workload_bytes": 32000,
+          "sw_total_us": 3934,
+          "hw_total_us": 2859,
+          "sw_avg_latency_us": 3.934,
+          "hw_avg_latency_us": 2.859,
+          "sw_throughput_mb_s": 7.757391,
+          "hw_throughput_mb_s": 10.674214,
+          "speedup": 1.376006
+        },
+        {
+          "length_bytes": 128,
+          "workload_bytes": 128000,
+          "sw_total_us": 11574,
+          "hw_total_us": 5278,
+          "sw_avg_latency_us": 11.574,
+          "hw_avg_latency_us": 5.278,
+          "sw_throughput_mb_s": 10.546943,
+          "hw_throughput_mb_s": 23.128138,
+          "speedup": 2.192876
+        },
+        {
+          "length_bytes": 512,
+          "workload_bytes": 512000,
+          "sw_total_us": 42138,
+          "hw_total_us": 14891,
+          "sw_avg_latency_us": 42.138,
+          "hw_avg_latency_us": 14.891,
+          "sw_throughput_mb_s": 11.58767,
+          "hw_throughput_mb_s": 32.79036,
+          "speedup": 2.829763
+        },
+        {
+          "length_bytes": 1472,
+          "workload_bytes": 1472000,
+          "sw_total_us": 118551,
+          "hw_total_us": 39000,
+          "sw_avg_latency_us": 118.551,
+          "hw_avg_latency_us": 39.0,
+          "sw_throughput_mb_s": 11.84139,
+          "hw_throughput_mb_s": 35.995092,
+          "speedup": 3.039769
+        }
+      ],
+      "summary": {
+        "record_count": 5,
+        "min_speedup": 1.075856,
+        "max_speedup": 3.039769,
+        "avg_speedup": 2.102854
+      },
+      "meets_target": true
+    }
+  },
+  "overall": {
+    "meets_target": true
+  }
+}

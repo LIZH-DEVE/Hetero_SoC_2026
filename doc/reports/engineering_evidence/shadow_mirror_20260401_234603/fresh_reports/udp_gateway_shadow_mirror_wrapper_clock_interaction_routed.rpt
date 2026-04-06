@@ -1,0 +1,23 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version : Vivado v.2024.1 (win64) Build 5076996 Wed May 22 18:37:14 MDT 2024
+| Date         : Wed Apr  1 23:47:56 2026
+| Host         : LAPTOP-96UDD738 running 64-bit major release  (build 9200)
+| Command      : report_clock_interaction -file D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/doc/reports/engineering_evidence/shadow_mirror_20260401_234603/fresh_reports/udp_gateway_shadow_mirror_wrapper_clock_interaction_routed.rpt
+| Design       : udp_gateway_shadow_mirror_wrapper
+| Device       : 7z020-clg400
+| Speed File   : -1  PRODUCTION 1.12 2019-11-22
+| Design State : Physopt postRoute
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Clock Interaction Report
+
+Clock Interaction Table
+-----------------------
+
+                            WNS                            TNS Failing  TNS Total    WNS Path         Clock-Pair           Inter-Clock         
+From Clock    To Clock      Clock Edges  WNS(ns)  TNS(ns)    Endpoints    Endpoints  Requirement(ns)  Classification       Constraints         
+------------  ------------  -----------  -------  -------  -----------  -----------  ---------------  -------------------  ------------------  
+clk_fpga_0    clk_fpga_0    rise - rise     3.18     0.00            0       194625            20.00  Clean                Partial False Path  
+
+

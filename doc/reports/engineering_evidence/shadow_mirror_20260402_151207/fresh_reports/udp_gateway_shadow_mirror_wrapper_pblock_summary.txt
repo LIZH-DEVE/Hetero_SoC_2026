@@ -1,0 +1,61 @@
+Pblock Summary
+
+==== live_crypto_region ====
+Property               Type     Read-only  Value
+CELL_COUNT             int      true       1
+CLASS                  string   true       pblock
+CONTAIN_ROUTING        bool     false      0
+DERIVED_RANGES         string*  true       SLICE_X80Y99:SLICE_X113Y149 SLICE_X26Y99:SLICE_X67Y149
+EXCLUDE_PLACEMENT      bool     false      0
+GRIDTYPES              string   false      SLICE
+GRID_RANGES            string*  true       SLICE_X80Y99:SLICE_X113Y149 SLICE_X26Y99:SLICE_X67Y149
+IS_SOFT                bool     false      1
+NAME                   string   false      live_crypto_region
+PARENT                 string   false      ROOT
+PARTPIN_SPREADING      int      false      5
+PRIMITIVE_COUNT        int      true       22380
+RECTANGLE_COUNT        int      true       1
+RECTANGLE_SITES        string*  true       { 80 99 113 149 } { 26 99 67 149 }
+RECTANGLE_SITES_COUNT  int      true       3876
+RESET_AFTER_RECONFIG   bool     false      0
+SNAPPING_MODE          enum     false      
+
+==== shadow_ctrl_region ====
+Property               Type     Read-only  Value
+CELL_COUNT             int      true       157
+CLASS                  string   true       pblock
+CONTAIN_ROUTING        bool     false      0
+DERIVED_RANGES         string*  true       RAMB18_X3Y24:RAMB18_X3Y31 SLICE_X96Y50:SLICE_X113Y98
+EXCLUDE_PLACEMENT      bool     false      0
+GRIDTYPES              string   false      SLICE RAMB18
+GRID_RANGES            string*  true       RAMB18_X3Y24:RAMB18_X3Y31 SLICE_X96Y50:SLICE_X113Y98
+IS_SOFT                bool     false      1
+NAME                   string   false      shadow_ctrl_region
+PARENT                 string   false      ROOT
+PARTPIN_SPREADING      int      false      5
+PRIMITIVE_COUNT        int      true       306
+RECTANGLE_COUNT        int      true       3
+RECTANGLE_SITES        string*  true       { 3 24 3 31 } { 96 50 113 98 }
+RECTANGLE_SITES_COUNT  int      true       890
+RESET_AFTER_RECONFIG   bool     false      0
+SNAPPING_MODE          enum     false      
+
+==== shadow_data_region ====
+Property               Type     Read-only  Value
+CELL_COUNT             int      true       68
+CLASS                  string   true       pblock
+CONTAIN_ROUTING        bool     false      0
+DERIVED_RANGES         string*  true       RAMB36_X3Y0:RAMB36_X5Y11 SLICE_X96Y0:SLICE_X113Y49 SLICE_X80Y0:SLICE_X95Y98 SLICE_X68Y0:SLICE_X79Y49 SLICE_X26Y0:SLICE_X67Y98 SLICE_X0Y0:SLICE_X25Y49
+EXCLUDE_PLACEMENT      bool     false      0
+GRIDTYPES              string   false      SLICE RAMB36
+GRID_RANGES            string*  true       RAMB36_X3Y0:RAMB36_X5Y11 SLICE_X80Y50:SLICE_X95Y98 SLICE_X26Y50:SLICE_X67Y98 SLICE_X0Y0:SLICE_X113Y49
+IS_SOFT                bool     false      1
+NAME                   string   false      shadow_data_region
+PARENT                 string   false      ROOT
+PARTPIN_SPREADING      int      false      5
+PRIMITIVE_COUNT        int      true       36458
+RECTANGLE_COUNT        int      true       10
+RECTANGLE_SITES        string*  true       { 3 0 5 11 } { 80 50 95 98 } { 26 50 67 98 } { 0 0 113 49 }
+RECTANGLE_SITES_COUNT  int      true       8578
+RESET_AFTER_RECONFIG   bool     false      0
+SNAPPING_MODE          enum     false      

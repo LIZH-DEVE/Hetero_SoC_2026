@@ -115,6 +115,10 @@ module dma_gateway_hybrid_board_wrapper #(
     localparam integer FASTPATH_HDR_WORDS = 11;
     localparam integer FASTPATH_TXCAP_DEPTH = 384;
     localparam integer FASTPATH_PAYLOAD_DEPTH = FASTPATH_TXCAP_DEPTH - FASTPATH_HDR_WORDS;
+    localparam integer TXCAP_PAYLOAD_ADDR_WIDTH = 9;
+    localparam integer TXCAP_PAYLOAD_MEM_DEPTH = (1 << TXCAP_PAYLOAD_ADDR_WIDTH);
+    localparam [8:0] FASTPATH_HDR_WORDS_ADDR = FASTPATH_HDR_WORDS;
+    localparam integer FASTPATH_STATUS_TXCAP_STORAGE_SHIFT = 6;
     localparam [2:0] FASTPATH_ROUTE_IDLE = 3'd0;
     localparam [2:0] FASTPATH_ROUTE_HEADER = 3'd1;
     localparam [2:0] FASTPATH_ROUTE_REPLAY = 3'd2;
@@ -215,9 +219,15 @@ module dma_gateway_hybrid_board_wrapper #(
     wire [31:0]           classifier_dma_tdata;
     wire                  classifier_dma_tvalid;
     wire                  classifier_dma_tlast;
+    wire                  classifier_dma_terror;
+    wire                  classifier_dma_pkt_start;
+    wire                  classifier_dma_pkt_end;
+    wire                  classifier_dma_cbc_mode;
+    wire [127:0]          classifier_dma_iv_header;
     wire                  classifier_dma_tready;
     wire [31:0]           drop_wrong_port_count;
     wire [31:0]           drop_unaligned_count;
+    wire [31:0]           drop_cbc_length_invalid_count;
     wire                  classifier_dma_idle;
 
     reg  [2:0]            fastpath_route_state_q;
@@ -233,13 +243,21 @@ module dma_gateway_hybrid_board_wrapper #(
     reg  [31:0]           fastpath_hit_count_q;
     reg  [31:0]           fastpath_fallback_count_q;
     reg  [31:0]           txcap_header_mem [0:FASTPATH_HDR_WORDS-1];
-    (* RAM_STYLE = "BLOCK" *) reg [31:0] txcap_payload_mem [0:FASTPATH_PAYLOAD_DEPTH-1];
     reg  [8:0]            txcap_payload_wr_ptr_q;
     reg  [8:0]            txcap_rd_ptr_q;
     reg  [9:0]            txcap_count_q;
     reg  [31:0]           txcap_read_data_q;
     reg                   txcap_done_q;
     reg                   txcap_overflow_q;
+    reg                   txcap_payload_rd_pending_q;
+
+    wire                  txcap_payload_wr_en;
+    wire [0:0]            txcap_payload_wr_wea;
+    wire [TXCAP_PAYLOAD_ADDR_WIDTH-1:0] txcap_payload_wr_addr;
+    wire [8:0]            txcap_next_rd_ptr;
+    wire                  txcap_payload_rd_fire;
+    wire [TXCAP_PAYLOAD_ADDR_WIDTH-1:0] txcap_payload_rd_addr;
+    wire [31:0]           txcap_payload_rd_data;
 
     assign net_applied_cfg0         = {29'd0, stage1_arp_enable, stage1_ingress_inject_sel, stage1_network_enable};
     assign net_applied_local_ip     = stage1_local_ip;
@@ -248,9 +266,67 @@ module dma_gateway_hybrid_board_wrapper #(
     assign txcap_status             = (SHADOW_INJECT_ONLY != 0) ? {13'd0, txcap_overflow_q, txcap_done_q, (txcap_count_q != 0), 6'd0, txcap_count_q} : stage1_txcap_status;
     assign txcap_data               = (SHADOW_INJECT_ONLY != 0) ? txcap_read_data_q : stage1_txcap_data;
     assign netdbg_status            = (SHADOW_INJECT_ONLY != 0) ? 32'd0 : stage1_netdbg_status;
-    assign fastpath_status          = {26'd0, fastpath_last_reason_q, fastpath_last_hit_q, ctrl_fastpath_en};
+    assign fastpath_status          = (32'd1 << FASTPATH_STATUS_TXCAP_STORAGE_SHIFT) |
+                                      {26'd0, fastpath_last_reason_q, fastpath_last_hit_q, ctrl_fastpath_en};
     assign fastpath_hit_count       = fastpath_hit_count_q;
     assign fastpath_fallback_count  = fastpath_fallback_count_q;
+    assign txcap_payload_wr_en      = (SHADOW_INJECT_ONLY != 0) &&
+                                      (fastpath_route_state_q == FASTPATH_ROUTE_TXCAP) &&
+                                      aclf_tvalid && aclf_tready &&
+                                      (txcap_count_q < FASTPATH_TXCAP_DEPTH);
+    assign txcap_payload_wr_wea     = {txcap_payload_wr_en};
+    assign txcap_payload_wr_addr    = txcap_payload_wr_ptr_q;
+    assign txcap_next_rd_ptr        = txcap_rd_ptr_q + 9'd1;
+    assign txcap_payload_rd_fire    = txcap_pop && (txcap_count_q > 10'd1) &&
+                                      (txcap_next_rd_ptr >= FASTPATH_HDR_WORDS_ADDR);
+    assign txcap_payload_rd_addr    = txcap_next_rd_ptr - FASTPATH_HDR_WORDS_ADDR;
+
+    // Force TXCAP payload storage into block RAM. Attribute-only inference kept
+    // this payload store in distributed RAM, so use an explicit simple dual-port
+    // memory and absorb the payload pop latency with txcap_payload_rd_pending_q.
+    xpm_memory_sdpram #(
+        .ADDR_WIDTH_A(TXCAP_PAYLOAD_ADDR_WIDTH),
+        .ADDR_WIDTH_B(TXCAP_PAYLOAD_ADDR_WIDTH),
+        .AUTO_SLEEP_TIME(0),
+        .BYTE_WRITE_WIDTH_A(DATA_WIDTH),
+        .CASCADE_HEIGHT(0),
+        .CLOCKING_MODE("common_clock"),
+        .ECC_MODE("no_ecc"),
+        .MEMORY_INIT_FILE("none"),
+        .MEMORY_INIT_PARAM("0"),
+        .MEMORY_OPTIMIZATION("true"),
+        .MEMORY_PRIMITIVE("block"),
+        .MEMORY_SIZE(TXCAP_PAYLOAD_MEM_DEPTH * DATA_WIDTH),
+        .MESSAGE_CONTROL(0),
+        .READ_DATA_WIDTH_B(DATA_WIDTH),
+        .READ_LATENCY_B(1),
+        .READ_RESET_VALUE_B("0"),
+        .RST_MODE_A("SYNC"),
+        .RST_MODE_B("SYNC"),
+        .SIM_ASSERT_CHK(0),
+        .USE_EMBEDDED_CONSTRAINT(0),
+        .USE_MEM_INIT(0),
+        .WAKEUP_TIME("disable_sleep"),
+        .WRITE_DATA_WIDTH_A(DATA_WIDTH),
+        .WRITE_MODE_B("read_first")
+    ) u_txcap_payload_mem (
+        .sleep(1'b0),
+        .clka(clk),
+        .ena(txcap_payload_wr_en),
+        .wea(txcap_payload_wr_wea),
+        .addra(txcap_payload_wr_addr),
+        .dina(aclf_tdata),
+        .injectsbiterra(1'b0),
+        .injectdbiterra(1'b0),
+        .clkb(clk),
+        .rstb(!rst_n),
+        .enb(txcap_payload_rd_fire),
+        .regceb(1'b1),
+        .addrb(txcap_payload_rd_addr),
+        .doutb(txcap_payload_rd_data),
+        .sbiterrb(),
+        .dbiterrb()
+    );
 
     device_dna_reader u_device_dna_reader (
         .clk(clk),
@@ -574,7 +650,13 @@ module dma_gateway_hybrid_board_wrapper #(
             txcap_read_data_q <= 32'd0;
             txcap_done_q <= 1'b0;
             txcap_overflow_q <= 1'b0;
+            txcap_payload_rd_pending_q <= 1'b0;
         end else begin
+            if (txcap_payload_rd_pending_q) begin
+                txcap_read_data_q <= txcap_payload_rd_data;
+            end
+            txcap_payload_rd_pending_q <= txcap_payload_rd_fire;
+
             if (txcap_clear) begin
                 txcap_payload_wr_ptr_q <= 9'd0;
                 txcap_rd_ptr_q <= 9'd0;
@@ -582,18 +664,19 @@ module dma_gateway_hybrid_board_wrapper #(
                 txcap_read_data_q <= 32'd0;
                 txcap_done_q <= 1'b0;
                 txcap_overflow_q <= 1'b0;
+                txcap_payload_rd_pending_q <= 1'b0;
             end else if (txcap_pop && (txcap_count_q != 0)) begin
                 if (txcap_count_q == 10'd1) begin
                     txcap_rd_ptr_q <= 9'd0;
                     txcap_count_q <= 10'd0;
                     txcap_read_data_q <= 32'd0;
+                    txcap_payload_rd_pending_q <= 1'b0;
                 end else begin
                     txcap_rd_ptr_q <= txcap_rd_ptr_q + 9'd1;
                     txcap_count_q <= txcap_count_q - 10'd1;
-                    if ((txcap_rd_ptr_q + 9'd1) < FASTPATH_HDR_WORDS) begin
-                        txcap_read_data_q <= txcap_header_mem[txcap_rd_ptr_q + 9'd1];
-                    end else begin
-                        txcap_read_data_q <= txcap_payload_mem[(txcap_rd_ptr_q + 9'd1) - FASTPATH_HDR_WORDS];
+                    if (txcap_next_rd_ptr < FASTPATH_HDR_WORDS_ADDR) begin
+                        txcap_read_data_q <= txcap_header_mem[txcap_next_rd_ptr];
+                        txcap_payload_rd_pending_q <= 1'b0;
                     end
                 end
             end
@@ -682,6 +765,7 @@ module dma_gateway_hybrid_board_wrapper #(
                                 txcap_read_data_q <= fastpath_header_mem[0];
                                 txcap_done_q <= 1'b0;
                                 txcap_overflow_q <= 1'b0;
+                                txcap_payload_rd_pending_q <= 1'b0;
                                 payload_words_q <= (aclf_tdata[15:0] - 16'd8) >> 2;
                                 fastpath_last_payload_words_q <= (aclf_tdata[15:0] - 16'd8) >> 2;
                                 fastpath_last_hit_q <= 1'b1;
@@ -730,7 +814,6 @@ module dma_gateway_hybrid_board_wrapper #(
                 FASTPATH_ROUTE_TXCAP: begin
                     if (aclf_tvalid && aclf_tready) begin
                         if (txcap_count_q < FASTPATH_TXCAP_DEPTH) begin
-                            txcap_payload_mem[txcap_payload_wr_ptr_q] <= aclf_tdata;
                             txcap_payload_wr_ptr_q <= txcap_payload_wr_ptr_q + 9'd1;
                             txcap_count_q <= txcap_count_q + 10'd1;
                             if (aclf_tlast) begin
@@ -766,9 +849,15 @@ module dma_gateway_hybrid_board_wrapper #(
         .m_axis_dma_tdata(classifier_dma_tdata),
         .m_axis_dma_tvalid(classifier_dma_tvalid),
         .m_axis_dma_tlast(classifier_dma_tlast),
+        .m_axis_dma_terror(classifier_dma_terror),
+        .m_axis_dma_pkt_start(classifier_dma_pkt_start),
+        .m_axis_dma_pkt_end(classifier_dma_pkt_end),
+        .m_axis_dma_cbc_mode(classifier_dma_cbc_mode),
+        .m_axis_dma_iv_header(classifier_dma_iv_header),
         .m_axis_dma_tready(classifier_dma_tready),
         .o_drop_wrong_port_count(drop_wrong_port_count),
         .o_drop_unaligned_count(drop_unaligned_count),
+        .o_drop_cbc_length_invalid_count(drop_cbc_length_invalid_count),
         .o_dma_idle(classifier_dma_idle)
     );
 
@@ -801,6 +890,11 @@ module dma_gateway_hybrid_board_wrapper #(
         .rx_wr_valid(classifier_dma_tvalid),
         .rx_wr_data(classifier_dma_tdata),
         .rx_wr_last(classifier_dma_tlast),
+        .rx_wr_error(classifier_dma_terror),
+        .rx_wr_pkt_start(classifier_dma_pkt_start),
+        .rx_wr_pkt_end(classifier_dma_pkt_end),
+        .rx_wr_cbc_mode(classifier_dma_cbc_mode),
+        .rx_wr_iv_header(classifier_dma_iv_header),
         .rx_wr_ready(classifier_dma_tready),
         .tx_axis_tdata(),
         .tx_axis_tvalid(),

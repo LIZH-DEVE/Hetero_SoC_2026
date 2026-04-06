@@ -39,10 +39,10 @@ module acl_match_engine #(
         end
     endfunction
 
+    localparam logic [0:0] GEN_MEM_WE_DISABLE = 1'b0;
+
     (* RAM_STYLE = "BLOCK" *) logic [TAG_WIDTH-1:0] bram_way0 [0:DEPTH-1];
     (* RAM_STYLE = "BLOCK" *) logic [TAG_WIDTH-1:0] bram_way1 [0:DEPTH-1];
-    logic [GEN_WIDTH-1:0] gen_way0 [0:DEPTH-1];
-    logic [GEN_WIDTH-1:0] gen_way1 [0:DEPTH-1];
     logic                 replace_sel [0:DEPTH-1];
     integer init_idx;
 
@@ -55,7 +55,25 @@ module acl_match_engine #(
 
     logic [TAG_WIDTH-1:0]  rd_way0_q, rd_way1_q;
     logic [GEN_WIDTH-1:0]  rd_gen0_q, rd_gen1_q;
+    logic [GEN_WIDTH-1:0]  acl_wr_gen0_q, acl_wr_gen1_q;
     logic                  match_valid_q;
+    logic                  acl_wr_stage_valid;
+    logic [ADDR_WIDTH-1:0] acl_wr_stage_addr;
+    logic [DATA_WIDTH-1:0] acl_wr_stage_data;
+    logic                  acl_wr_queue_valid;
+    logic [ADDR_WIDTH-1:0] acl_wr_queue_addr;
+    logic [DATA_WIDTH-1:0] acl_wr_queue_data;
+    logic                  acl_wr_launch_from_queue;
+    logic                  acl_wr_read_fire;
+    logic [ADDR_WIDTH-1:0] acl_wr_read_addr;
+    logic [DATA_WIDTH-1:0] acl_wr_read_data;
+    logic                  acl_wr_replace_q;
+    logic                  acl_wr_way0_free;
+    logic                  acl_wr_way1_free;
+    logic                  acl_wr_write_way0;
+    logic                  acl_wr_write_way1;
+    logic [0:0]            acl_wr_gen0_web;
+    logic [0:0]            acl_wr_gen1_web;
 
     logic way0_valid_cmp, way1_valid_cmp;
     logic way0_hit_cmp, way1_hit_cmp;
@@ -74,16 +92,145 @@ module acl_match_engine #(
     assign way0_hit_cmp = way0_valid_cmp && (rd_way0_q == lookup_tuple_q);
     assign way1_hit_cmp = way1_valid_cmp && (rd_way1_q == lookup_tuple_q);
     assign any_hit_cmp  = way0_hit_cmp || way1_hit_cmp;
+    assign acl_wr_launch_from_queue = !acl_wr_stage_valid && acl_wr_queue_valid;
+    assign acl_wr_read_fire = acl_wr_launch_from_queue || (!acl_wr_stage_valid && !acl_wr_queue_valid && acl_write_en);
+    assign acl_wr_read_addr = acl_wr_launch_from_queue ? acl_wr_queue_addr : acl_write_addr;
+    assign acl_wr_read_data = acl_wr_launch_from_queue ? acl_wr_queue_data : acl_write_data;
+    assign acl_wr_replace_q = replace_sel[acl_wr_stage_addr];
+    assign acl_wr_way0_free = (acl_wr_gen0_q != active_gen);
+    assign acl_wr_way1_free = (acl_wr_gen1_q != active_gen);
+    assign acl_wr_write_way0 = acl_wr_stage_valid &&
+                               (acl_wr_way0_free || (!acl_wr_way1_free && !acl_wr_replace_q));
+    assign acl_wr_write_way1 = acl_wr_stage_valid &&
+                               (!acl_wr_way0_free && (acl_wr_way1_free || acl_wr_replace_q));
+    assign acl_wr_gen0_web = {acl_wr_write_way0};
+    assign acl_wr_gen1_web = {acl_wr_write_way1};
 
     initial begin
         for (init_idx = 0; init_idx < DEPTH; init_idx = init_idx + 1) begin
             bram_way0[init_idx] = '0;
             bram_way1[init_idx] = '0;
-            gen_way0[init_idx] = '0;
-            gen_way1[init_idx] = '0;
             replace_sel[init_idx] = 1'b0;
         end
     end
+
+    xpm_memory_tdpram #(
+        .ADDR_WIDTH_A(ADDR_WIDTH),
+        .ADDR_WIDTH_B(ADDR_WIDTH),
+        .AUTO_SLEEP_TIME(0),
+        .BYTE_WRITE_WIDTH_A(GEN_WIDTH),
+        .BYTE_WRITE_WIDTH_B(GEN_WIDTH),
+        .CASCADE_HEIGHT(0),
+        .CLOCKING_MODE("common_clock"),
+        .ECC_MODE("no_ecc"),
+        .MEMORY_INIT_FILE("none"),
+        .MEMORY_INIT_PARAM("0"),
+        .MEMORY_OPTIMIZATION("true"),
+        .MEMORY_PRIMITIVE("block"),
+        .MEMORY_SIZE(DEPTH * GEN_WIDTH),
+        .MESSAGE_CONTROL(0),
+        .READ_DATA_WIDTH_A(GEN_WIDTH),
+        .READ_DATA_WIDTH_B(GEN_WIDTH),
+        .READ_LATENCY_A(1),
+        .READ_LATENCY_B(1),
+        .READ_RESET_VALUE_A("0"),
+        .READ_RESET_VALUE_B("0"),
+        .RST_MODE_A("SYNC"),
+        .RST_MODE_B("SYNC"),
+        .SIM_ASSERT_CHK(0),
+        .USE_EMBEDDED_CONSTRAINT(0),
+        .USE_MEM_INIT(0),
+        .WAKEUP_TIME("disable_sleep"),
+        .WRITE_DATA_WIDTH_A(GEN_WIDTH),
+        .WRITE_DATA_WIDTH_B(GEN_WIDTH),
+        .WRITE_MODE_A("read_first"),
+        .WRITE_MODE_B("read_first")
+    ) u_gen_way0_mem (
+        .sleep(1'b0),
+        .clka(clk),
+        .rsta(!rst_n),
+        .ena(lookup_req_q),
+        .regcea(1'b1),
+        .wea(GEN_MEM_WE_DISABLE),
+        .addra(lookup_addr_q),
+        .dina('0),
+        .injectsbiterra(1'b0),
+        .injectdbiterra(1'b0),
+        .douta(rd_gen0_q),
+        .sbiterra(),
+        .dbiterra(),
+        .clkb(clk),
+        .rstb(!rst_n),
+        .enb(acl_wr_stage_valid || acl_wr_read_fire),
+        .regceb(1'b1),
+        .web(acl_wr_gen0_web),
+        .addrb(acl_wr_stage_valid ? acl_wr_stage_addr : acl_wr_read_addr),
+        .dinb(active_gen),
+        .injectsbiterrb(1'b0),
+        .injectdbiterrb(1'b0),
+        .doutb(acl_wr_gen0_q),
+        .sbiterrb(),
+        .dbiterrb()
+    );
+
+    xpm_memory_tdpram #(
+        .ADDR_WIDTH_A(ADDR_WIDTH),
+        .ADDR_WIDTH_B(ADDR_WIDTH),
+        .AUTO_SLEEP_TIME(0),
+        .BYTE_WRITE_WIDTH_A(GEN_WIDTH),
+        .BYTE_WRITE_WIDTH_B(GEN_WIDTH),
+        .CASCADE_HEIGHT(0),
+        .CLOCKING_MODE("common_clock"),
+        .ECC_MODE("no_ecc"),
+        .MEMORY_INIT_FILE("none"),
+        .MEMORY_INIT_PARAM("0"),
+        .MEMORY_OPTIMIZATION("true"),
+        .MEMORY_PRIMITIVE("block"),
+        .MEMORY_SIZE(DEPTH * GEN_WIDTH),
+        .MESSAGE_CONTROL(0),
+        .READ_DATA_WIDTH_A(GEN_WIDTH),
+        .READ_DATA_WIDTH_B(GEN_WIDTH),
+        .READ_LATENCY_A(1),
+        .READ_LATENCY_B(1),
+        .READ_RESET_VALUE_A("0"),
+        .READ_RESET_VALUE_B("0"),
+        .RST_MODE_A("SYNC"),
+        .RST_MODE_B("SYNC"),
+        .SIM_ASSERT_CHK(0),
+        .USE_EMBEDDED_CONSTRAINT(0),
+        .USE_MEM_INIT(0),
+        .WAKEUP_TIME("disable_sleep"),
+        .WRITE_DATA_WIDTH_A(GEN_WIDTH),
+        .WRITE_DATA_WIDTH_B(GEN_WIDTH),
+        .WRITE_MODE_A("read_first"),
+        .WRITE_MODE_B("read_first")
+    ) u_gen_way1_mem (
+        .sleep(1'b0),
+        .clka(clk),
+        .rsta(!rst_n),
+        .ena(lookup_req_q),
+        .regcea(1'b1),
+        .wea(GEN_MEM_WE_DISABLE),
+        .addra(lookup_addr_q),
+        .dina('0),
+        .injectsbiterra(1'b0),
+        .injectdbiterra(1'b0),
+        .douta(rd_gen1_q),
+        .sbiterra(),
+        .dbiterra(),
+        .clkb(clk),
+        .rstb(!rst_n),
+        .enb(acl_wr_stage_valid || acl_wr_read_fire),
+        .regceb(1'b1),
+        .web(acl_wr_gen1_web),
+        .addrb(acl_wr_stage_valid ? acl_wr_stage_addr : acl_wr_read_addr),
+        .dinb(active_gen),
+        .injectsbiterrb(1'b0),
+        .injectdbiterrb(1'b0),
+        .doutb(acl_wr_gen1_q),
+        .sbiterrb(),
+        .dbiterrb()
+    );
 
     // Keep the BRAM-facing lookup pipeline synchronous so inferred RAM address
     // pins are not driven by async-reset flops.
@@ -116,12 +263,36 @@ module acl_match_engine #(
             hit_way_r      <= '0;
             hit_cnt        <= 32'd0;
             miss_cnt       <= 32'd0;
+            acl_wr_stage_valid <= 1'b0;
+            acl_wr_stage_addr  <= '0;
+            acl_wr_stage_data  <= '0;
+            acl_wr_queue_valid <= 1'b0;
+            acl_wr_queue_addr  <= '0;
+            acl_wr_queue_data  <= '0;
         end else begin
             match_valid_q <= lookup_req_q;
             result_valid_r <= 1'b0;
             acl_hit_r <= 1'b0;
             acl_drop_r <= 1'b0;
             hit_way_r <= '0;
+            acl_wr_stage_valid <= acl_wr_read_fire;
+
+            if (acl_wr_read_fire) begin
+                acl_wr_stage_addr <= acl_wr_read_addr;
+                acl_wr_stage_data <= acl_wr_read_data;
+            end
+
+            if (acl_wr_launch_from_queue) begin
+                acl_wr_queue_valid <= 1'b0;
+            end
+
+            if (acl_write_en && (acl_wr_stage_valid || acl_wr_queue_valid)) begin
+                if (!acl_wr_queue_valid || acl_wr_launch_from_queue) begin
+                    acl_wr_queue_valid <= 1'b1;
+                    acl_wr_queue_addr <= acl_write_addr;
+                    acl_wr_queue_data <= acl_write_data;
+                end
+            end
 
             if (acl_clear) begin
                 if (active_gen == {GEN_WIDTH{1'b1}}) begin
@@ -158,28 +329,14 @@ module acl_match_engine #(
         if (lookup_req_q) begin
             rd_way0_q <= bram_way0[lookup_addr_q];
             rd_way1_q <= bram_way1[lookup_addr_q];
-            rd_gen0_q <= gen_way0[lookup_addr_q];
-            rd_gen1_q <= gen_way1[lookup_addr_q];
         end
 
-        if (acl_write_en) begin
-            if (gen_way0[acl_write_addr] != active_gen) begin
-                bram_way0[acl_write_addr] <= acl_write_data;
-                gen_way0[acl_write_addr]  <= active_gen;
-                replace_sel[acl_write_addr] <= 1'b1;
-            end else if (gen_way1[acl_write_addr] != active_gen) begin
-                bram_way1[acl_write_addr] <= acl_write_data;
-                gen_way1[acl_write_addr]  <= active_gen;
-                replace_sel[acl_write_addr] <= 1'b0;
-            end else if (replace_sel[acl_write_addr] == 1'b1) begin
-                bram_way1[acl_write_addr] <= acl_write_data;
-                gen_way1[acl_write_addr]  <= active_gen;
-                replace_sel[acl_write_addr] <= 1'b0;
-            end else begin
-                bram_way0[acl_write_addr] <= acl_write_data;
-                gen_way0[acl_write_addr]  <= active_gen;
-                replace_sel[acl_write_addr] <= 1'b1;
-            end
+        if (acl_wr_write_way0) begin
+            bram_way0[acl_wr_stage_addr] <= acl_wr_stage_data;
+            replace_sel[acl_wr_stage_addr] <= 1'b1;
+        end else if (acl_wr_write_way1) begin
+            bram_way1[acl_wr_stage_addr] <= acl_wr_stage_data;
+            replace_sel[acl_wr_stage_addr] <= 1'b0;
         end
     end
 

@@ -63,6 +63,14 @@ class ControlMessage:
     payload: bytes
 
 
+class ControlStatusError(RuntimeError):
+    def __init__(self, message: ControlMessage):
+        self.message = message
+        self.status_code = message.status_code
+        self.msg_type = message.msg_type
+        super().__init__(f"control status={message.status_code} msg_type={message.msg_type}")
+
+
 def fnv1a32(data: bytes, seed: int = 0x811C9DC5) -> int:
     value = seed & 0xFFFFFFFF
     for byte in data:
@@ -199,12 +207,24 @@ class ControlClient:
         self.seq_id += 1
         return self.seq_id
 
-    def transact(self, msg_type: int, flags: int = 0, payload: bytes = b"") -> ControlMessage:
-        seq_id = 0 if msg_type == MSG_HELLO else self._next_seq()
+    def transact(
+        self,
+        msg_type: int,
+        flags: int = 0,
+        payload: bytes = b"",
+        seq_id: int | None = None,
+    ) -> ControlMessage:
+        if msg_type == MSG_HELLO:
+            actual_seq_id = 0
+        elif seq_id is None:
+            actual_seq_id = self._next_seq()
+        else:
+            actual_seq_id = seq_id & 0xFFFFFFFF
+            self.seq_id = actual_seq_id
         packet = pack_control_message(
             msg_type=msg_type,
             session_id=self.session_id,
-            seq_id=seq_id,
+            seq_id=actual_seq_id,
             flags=flags,
             payload=payload,
             binding_id=self.binding_id,
@@ -213,7 +233,7 @@ class ControlClient:
         data, _addr = self.sock.recvfrom(4096)
         message = unpack_control_message(data)
         if message.status_code != STATUS_OK:
-            raise RuntimeError(f"control status={message.status_code} msg_type={message.msg_type}")
+            raise ControlStatusError(message)
         if msg_type == MSG_HELLO:
             self.session_id = message.session_id
             if len(message.payload) >= 4:
@@ -223,27 +243,38 @@ class ControlClient:
     def hello(self) -> ControlMessage:
         return self.transact(MSG_HELLO)
 
-    def set_key(self, algo: str, user_key: bytes | None = None, dual_enable: bool = False) -> ControlMessage:
+    def set_key(
+        self,
+        algo: str,
+        user_key: bytes | None = None,
+        dual_enable: bool = False,
+        seq_id: int | None = None,
+    ) -> ControlMessage:
         key_material = user_key if user_key is not None else default_user_key(algo)
         if len(key_material) != 16:
             raise ValueError("SET_KEY requires 16-byte key material")
         flags = algo_to_flag(algo)
         if dual_enable:
             flags = ALGO_FLAG_AES | ALGO_FLAG_SM4
-        return self.transact(MSG_SET_KEY, flags=flags, payload=key_material)
+        return self.transact(MSG_SET_KEY, flags=flags, payload=key_material, seq_id=seq_id)
 
-    def status(self) -> ControlMessage:
-        return self.transact(MSG_STATUS)
+    def status(self, seq_id: int | None = None) -> ControlMessage:
+        return self.transact(MSG_STATUS, seq_id=seq_id)
 
-    def lock(self) -> ControlMessage:
-        return self.transact(MSG_LOCK)
+    def lock(self, seq_id: int | None = None) -> ControlMessage:
+        return self.transact(MSG_LOCK, seq_id=seq_id)
 
-    def unlock(self) -> ControlMessage:
-        return self.transact(MSG_UNLOCK)
+    def unlock(self, seq_id: int | None = None) -> ControlMessage:
+        return self.transact(MSG_UNLOCK, seq_id=seq_id)
 
-    def bench(self, algo: str, repeats: int = DEFAULT_BENCH_REPEATS) -> ControlMessage:
+    def bench(
+        self,
+        algo: str,
+        repeats: int = DEFAULT_BENCH_REPEATS,
+        seq_id: int | None = None,
+    ) -> ControlMessage:
         payload = struct.pack("!H", repeats & 0xFFFF)
-        return self.transact(MSG_BENCH, flags=algo_to_flag(algo), payload=payload)
+        return self.transact(MSG_BENCH, flags=algo_to_flag(algo), payload=payload, seq_id=seq_id)
 
 
 def authorize_session(
@@ -322,7 +353,21 @@ def main() -> int:
     parser.add_argument("--source-ip", default=DEFAULT_SOURCE_IP, help="Local source IP to bind")
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="Receive timeout in seconds")
     parser.add_argument("--port", type=int, default=CONTROL_PORT, help="Control UDP port")
+    parser.add_argument(
+        "--expect-status",
+        type=lambda x: int(x, 0),
+        default=STATUS_OK,
+        help="Expected control status code; returns success when matched",
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    def add_seq_argument(subparser: argparse.ArgumentParser) -> None:
+        subparser.add_argument(
+            "--seq-id",
+            type=lambda x: int(x, 0),
+            default=None,
+            help="Explicit control sequence id override",
+        )
 
     hello_parser = subparsers.add_parser("hello", help="Create or refresh a control session")
     hello_parser.set_defaults(command_name="hello")
@@ -330,6 +375,7 @@ def main() -> int:
     set_key_parser = subparsers.add_parser("set-key", help="Bind a key to the current session")
     set_key_parser.add_argument("--session-id", type=lambda x: int(x, 0), required=True)
     set_key_parser.add_argument("--binding-id", type=lambda x: int(x, 0), default=DEFAULT_BINDING_ID)
+    add_seq_argument(set_key_parser)
     set_key_parser.add_argument("--algo", choices=("aes", "sm4"), required=True)
     set_key_parser.add_argument("--key-hex", default=None, help="Optional 16-byte user key hex")
     set_key_parser.add_argument("--dual-enable", action="store_true", help="Authorize both AES and SM4 for this source IP")
@@ -337,18 +383,22 @@ def main() -> int:
     status_parser = subparsers.add_parser("status", help="Read status and counters")
     status_parser.add_argument("--session-id", type=lambda x: int(x, 0), required=True)
     status_parser.add_argument("--binding-id", type=lambda x: int(x, 0), default=DEFAULT_BINDING_ID)
+    add_seq_argument(status_parser)
 
     lock_parser = subparsers.add_parser("lock", help="Lock the current source IP")
     lock_parser.add_argument("--session-id", type=lambda x: int(x, 0), required=True)
     lock_parser.add_argument("--binding-id", type=lambda x: int(x, 0), default=DEFAULT_BINDING_ID)
+    add_seq_argument(lock_parser)
 
     unlock_parser = subparsers.add_parser("unlock", help="Unlock the current source IP")
     unlock_parser.add_argument("--session-id", type=lambda x: int(x, 0), required=True)
     unlock_parser.add_argument("--binding-id", type=lambda x: int(x, 0), default=DEFAULT_BINDING_ID)
+    add_seq_argument(unlock_parser)
 
     bench_parser = subparsers.add_parser("bench", help="Run on-board software vs hardware benchmark")
     bench_parser.add_argument("--session-id", type=lambda x: int(x, 0), required=True)
     bench_parser.add_argument("--binding-id", type=lambda x: int(x, 0), default=DEFAULT_BINDING_ID)
+    add_seq_argument(bench_parser)
     bench_parser.add_argument("--algo", choices=("aes", "sm4"), required=True)
     bench_parser.add_argument("--repeats", type=int, default=DEFAULT_BENCH_REPEATS)
 
@@ -364,29 +414,31 @@ def main() -> int:
 
         client.session_id = args.session_id
         client.binding_id = args.binding_id
+        if hasattr(args, "seq_id") and args.seq_id is not None:
+            client.seq_id = max(args.seq_id - 1, 0)
 
         if args.command == "set-key":
             key = bytes.fromhex(args.key_hex) if args.key_hex else None
-            msg = client.set_key(args.algo, user_key=key, dual_enable=args.dual_enable)
+            msg = client.set_key(args.algo, user_key=key, dual_enable=args.dual_enable, seq_id=args.seq_id)
             print(f"session_id=0x{client.session_id:08x}")
             print(f"binding_id=0x{client.binding_id:08x}")
             print(f"reply_payload_hex={msg.payload.hex()}")
             return 0
         if args.command == "status":
-            status = decode_status_payload(client.status().payload)
+            status = decode_status_payload(client.status(seq_id=args.seq_id).payload)
             for key, value in status.items():
                 print(f"{key}={value}")
             return 0
         if args.command == "lock":
-            client.lock()
+            client.lock(seq_id=args.seq_id)
             print("locked=1")
             return 0
         if args.command == "unlock":
-            client.unlock()
+            client.unlock(seq_id=args.seq_id)
             print("locked=0")
             return 0
         if args.command == "bench":
-            bench = decode_bench_payload(client.bench(args.algo, repeats=args.repeats).payload)
+            bench = decode_bench_payload(client.bench(args.algo, repeats=args.repeats, seq_id=args.seq_id).payload)
             print(f"algo={bench['algo']}")
             print(f"repeats={bench['repeats']}")
             for record in bench["records"]:
@@ -394,6 +446,15 @@ def main() -> int:
             return 0
         print(f"unknown command: {args.command}", file=sys.stderr)
         return 2
+    except ControlStatusError as exc:
+        if exc.status_code == args.expect_status:
+            print(f"status_code={exc.status_code}")
+            print(f"msg_type={exc.msg_type}")
+            print(f"session_id=0x{exc.message.session_id:08x}")
+            print(f"seq_id={exc.message.seq_id}")
+            return 0
+        print(str(exc), file=sys.stderr)
+        return 1
     finally:
         client.close()
 

@@ -55,7 +55,7 @@ module udp_gateway_shadow_inject_path (
         .CASCADE_HEIGHT(0),
         .DOUT_RESET_VALUE("0"),
         .ECC_MODE("no_ecc"),
-        .FIFO_MEMORY_TYPE("block"),
+        .FIFO_MEMORY_TYPE("distributed"),
         .FIFO_READ_LATENCY(0),
         .FIFO_WRITE_DEPTH(INJ_DEPTH),
         .FULL_RESET_VALUE(0),

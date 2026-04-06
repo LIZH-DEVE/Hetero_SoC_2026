@@ -139,7 +139,7 @@ module dma_crypto_source_reader #(
         .o_level(fifo_level)
     );
 
-    always_ff @(posedge clk or negedge rst_n) begin
+    always_ff @(posedge clk) begin
         if (!rst_n) begin
             read_state <= READ_IDLE;
             active_q <= 1'b0;

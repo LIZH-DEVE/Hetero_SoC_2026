@@ -5,8 +5,13 @@ import unittest
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 HCS_SOC = REPO_ROOT / "HCS_SOC"
-GATEWAY_C = HCS_SOC / "vitis_2023_udp_gateway_ws_2" / "ax7020_udp_gateway_app" / "src" / "udp_crypto_gateway.c"
-GATEWAY_H = HCS_SOC / "vitis_2023_udp_gateway_ws_2" / "ax7020_udp_gateway_app" / "src" / "udp_crypto_gateway.h"
+LEGACY_ROOT = HCS_SOC / "legacy"
+LEGACY_WORKSPACES = LEGACY_ROOT / "workspaces"
+LEGACY_APPS = LEGACY_ROOT / "apps"
+LEGACY_SCRIPTS = LEGACY_ROOT / "scripts"
+LEGACY_SD_BOOT = LEGACY_ROOT / "sd_boot"
+GATEWAY_C = LEGACY_WORKSPACES / "vitis_2023_udp_gateway_ws_2" / "ax7020_udp_gateway_app" / "src" / "udp_crypto_gateway.c"
+GATEWAY_H = LEGACY_WORKSPACES / "vitis_2023_udp_gateway_ws_2" / "ax7020_udp_gateway_app" / "src" / "udp_crypto_gateway.h"
 
 APP_MAIN = HCS_SOC / "ax7020_udp_gateway_shadow_mirror_app" / "src" / "main.c"
 APP_LSCRIPT = HCS_SOC / "ax7020_udp_gateway_shadow_mirror_app" / "src" / "lscript.ld"
@@ -26,12 +31,12 @@ SECURITY_CHECK = HCS_SOC / "run_ax7020_udp_gateway_shadow_mirror_security_check.
 BOARD_CHECK = HCS_SOC / "run_ax7020_udp_gateway_shadow_mirror_board_check.ps1"
 SOAK_CHECK = HCS_SOC / "run_ax7020_udp_gateway_shadow_mirror_soak_check.ps1"
 CAPTURE_UART = HCS_SOC / "capture_uart_boot_log.ps1"
-HYBRID_PROOF_APP = HCS_SOC / "ax7020_dma_gateway_hybrid_perf_proof_app" / "src" / "main.c"
-HYBRID_PROOF_BUILD_APP = HCS_SOC / "build_ax7020_dma_gateway_hybrid_perf_proof_app.ps1"
-HYBRID_PROOF_BUILD_BOOT = HCS_SOC / "build_ax7020_dma_gateway_hybrid_perf_proof_boot.ps1"
-HYBRID_PROOF_DEPLOY = HCS_SOC / "deploy_ax7020_dma_gateway_hybrid_perf_proof_to_sd.ps1"
-HYBRID_PROOF_RUN = HCS_SOC / "run_ax7020_dma_gateway_hybrid_perf_proof_board_check.ps1"
-HYBRID_PROOF_RELEASE_DIR = HCS_SOC / "sd_boot" / "ax7020_dma_gateway_hybrid_perf_proof"
+HYBRID_PROOF_APP = LEGACY_APPS / "ax7020_dma_gateway_hybrid_perf_proof_app" / "src" / "main.c"
+HYBRID_PROOF_BUILD_APP = LEGACY_SCRIPTS / "build_ax7020_dma_gateway_hybrid_perf_proof_app.ps1"
+HYBRID_PROOF_BUILD_BOOT = LEGACY_SCRIPTS / "build_ax7020_dma_gateway_hybrid_perf_proof_boot.ps1"
+HYBRID_PROOF_DEPLOY = LEGACY_SCRIPTS / "deploy_ax7020_dma_gateway_hybrid_perf_proof_to_sd.ps1"
+HYBRID_PROOF_RUN = LEGACY_SCRIPTS / "run_ax7020_dma_gateway_hybrid_perf_proof_board_check.ps1"
+HYBRID_PROOF_RELEASE_DIR = LEGACY_SD_BOOT / "ax7020_dma_gateway_hybrid_perf_proof"
 RELEASE_DIR = HCS_SOC / "sd_boot" / "ax7020_udp_gateway_shadow_mirror"
 BOOT_BIN = RELEASE_DIR / "BOOT.BIN"
 BOOT_BIF = RELEASE_DIR / "boot.bif"
@@ -316,6 +321,13 @@ class TestUdpGatewayShadowMirrorRelease(unittest.TestCase):
         job_block = _extract_shadow_job_struct(gateway_text)
         self.assertNotIn("struct pbuf *", job_block)
         self.assertNotIn("const uint8_t *payload;", job_block)
+
+    def test_shadow_mirror_release_includes_cbc_readiness_notes(self):
+        text = READ_ME.read_text(encoding="ascii")
+
+        self.assertIn("IV[16B] + DATA[16B * N]", text)
+        self.assertIn("No AXI-Lite per-packet IV programming", text)
+        self.assertIn("CBC single-flow theoretical ceiling", text)
 
     def test_shadow_app_build_prefers_legacy_uart_headers_before_toolchain_fsbl_headers(self):
         build_app = BUILD_APP.read_text(encoding="ascii")

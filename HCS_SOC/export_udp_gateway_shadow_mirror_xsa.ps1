@@ -9,49 +9,7 @@ Set-StrictMode -Version Latest
 
 $workspace = Split-Path -Parent $MyInvocation.MyCommand.Path
 $tcl = Join-Path $workspace "export_udp_gateway_shadow_mirror_xsa.tcl"
-$projectFile = Join-Path $workspace "HCS_SOC.xpr"
 $projectLock = Join-Path $workspace ".lock"
-
-function Repair-ShadowMirrorProjectTop {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ProjectPath
-    )
-
-    if (-not (Test-Path $ProjectPath)) {
-        throw "Shadow mirror project file not found: $ProjectPath"
-    }
-
-    $text = Get-Content -Path $ProjectPath -Raw -Encoding UTF8
-    $updated = $text
-
-    $updated = [regex]::Replace(
-        $updated,
-        '(<FileSet Name="sources_1"[\s\S]*?<Option Name="TopModule" Val=")[^"]+(")',
-        '${1}udp_gateway_shadow_mirror_wrapper$2',
-        [System.Text.RegularExpressions.RegexOptions]::Singleline
-    )
-
-    if ($updated -match '<FileSet Name="sources_1"[\s\S]*?<Option Name="TopAutoSet" Val="') {
-        $updated = [regex]::Replace(
-            $updated,
-            '(<FileSet Name="sources_1"[\s\S]*?<Option Name="TopAutoSet" Val=")[^"]+(")',
-            '${1}FALSE$2',
-            [System.Text.RegularExpressions.RegexOptions]::Singleline
-        )
-    } else {
-        $updated = [regex]::Replace(
-            $updated,
-            '(<FileSet Name="sources_1"[\s\S]*?<Option Name="TopModule" Val="udp_gateway_shadow_mirror_wrapper"/>\r?\n)(\s*</Config>)',
-            "`$1        <Option Name=`"TopAutoSet`" Val=`"FALSE`"/>`r`n`$2",
-            [System.Text.RegularExpressions.RegexOptions]::Singleline
-        )
-    }
-
-    if ($updated -ne $text) {
-        Set-Content -Path $ProjectPath -Value $updated -Encoding UTF8
-    }
-}
 
 function Remove-StaleShadowMirrorProjectLock {
     param(
@@ -82,7 +40,6 @@ if (-not (Test-Path $tcl)) {
     throw "Shadow mirror export Tcl not found: $tcl"
 }
 
-Repair-ShadowMirrorProjectTop -ProjectPath $projectFile
 Remove-StaleShadowMirrorProjectLock -LockPath $projectLock
 
 & $VivadoBat -mode batch -source $tcl

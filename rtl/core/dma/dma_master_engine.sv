@@ -3,7 +3,7 @@
 module dma_master_engine #(
     parameter ADDR_WIDTH = 32,
     parameter DATA_WIDTH = 32,
-    parameter integer MAX_OUTSTANDING_WRITES = 4
+    parameter integer MAX_OUTSTANDING_WRITES = 1
 )(
     input  logic                    clk,
     input  logic                    rst_n,
@@ -71,6 +71,7 @@ module dma_master_engine #(
     localparam integer MAX_BURST_BYTES = MAX_BURST_BEATS * BYTES_PER_BEAT;
 
     logic                    addr_unaligned;
+    logic                    len_unaligned;
     logic [ADDR_WIDTH-1:0]   current_addr;
     logic [31:0]             bytes_remaining;
     logic [31:0]             bytes_written_q;
@@ -82,6 +83,7 @@ module dma_master_engine #(
     logic                    aw_issue_allowed;
 
     assign addr_unaligned = (i_base_addr[2:0] != 3'b000);
+    assign len_unaligned = (i_total_len[1:0] != 2'b00);
     assign dist_to_4k = 13'h1000 - {1'b0, current_addr[11:0]};
     assign aw_issue_allowed = (outstanding_writes < MAX_OUTSTANDING_WRITES);
 
@@ -113,7 +115,7 @@ module dma_master_engine #(
                 bytes_written_q <= 32'd0;
             end
 
-            if (i_start && addr_unaligned) begin
+            if (i_start && (addr_unaligned || len_unaligned)) begin
                 o_error <= 1'b1;
             end
 
@@ -132,9 +134,9 @@ module dma_master_engine #(
 
             case (state)
                 IDLE: begin
-                    if (i_start && i_total_len != 0 && !addr_unaligned) begin
+                    if (i_start && i_total_len != 0 && !addr_unaligned && !len_unaligned) begin
                         current_addr <= i_base_addr;
-                        bytes_remaining <= {i_total_len[31:2], 2'b00};
+                        bytes_remaining <= i_total_len;
                         bytes_written_q <= 32'd0;
                     end else if (i_start && i_total_len == 0) begin
                         bytes_remaining <= 32'd0;
@@ -178,7 +180,7 @@ module dma_master_engine #(
             IDLE: begin
                 if (i_start && i_total_len == 0) begin
                     next_state = DONE;
-                end else if (i_start && i_total_len != 0 && !addr_unaligned) begin
+                end else if (i_start && i_total_len != 0 && !addr_unaligned && !len_unaligned) begin
                     next_state = CALC;
                 end
             end

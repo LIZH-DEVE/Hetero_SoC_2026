@@ -27,7 +27,8 @@ class TestShadowFastpathTxcapStorageContracts(unittest.TestCase):
         )
         self.assertIsNotNone(pop_match, "TXCAP pop handling block missing")
         pop_body = pop_match.group("body")
-        self.assertIn("txcap_header_mem[txcap_rd_ptr_q + 9'd1]", pop_body)
+        self.assertIn("txcap_next_rd_ptr", pop_body)
+        self.assertIn("txcap_header_mem[txcap_next_rd_ptr]", pop_body)
         self.assertNotIn("fastpath_header_mem[txcap_rd_ptr_q + 9'd1]", pop_body)
 
         hit_match = re.search(
@@ -51,6 +52,16 @@ class TestShadowFastpathTxcapStorageContracts(unittest.TestCase):
             "txcap_header_mem[10] <= aclf_tdata;",
         ):
             self.assertIn(token, hit_body)
+
+    def test_fastpath_status_explicitly_reports_txcap_storage_mode(self):
+        text = self.text
+
+        for token in (
+            "localparam integer FASTPATH_STATUS_TXCAP_STORAGE_SHIFT = 6;",
+            "assign fastpath_status          = (32'd1 << FASTPATH_STATUS_TXCAP_STORAGE_SHIFT) |",
+            "{26'd0, fastpath_last_reason_q, fastpath_last_hit_q, ctrl_fastpath_en};",
+        ):
+            self.assertIn(token, text)
 
 
 if __name__ == "__main__":

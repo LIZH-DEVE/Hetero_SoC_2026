@@ -6,16 +6,19 @@ import unittest
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 RTL = REPO_ROOT / "rtl"
 HCS_SOC = REPO_ROOT / "HCS_SOC"
+LEGACY_ROOT = HCS_SOC / "legacy"
+LEGACY_APPS = LEGACY_ROOT / "apps"
+LEGACY_SCRIPTS = LEGACY_ROOT / "scripts"
 TB = REPO_ROOT / "tb"
 
 CLASSIFIER_SV = RTL / "core" / "dma" / "udp_dma_ingress_classifier.sv"
 WRAPPER_SV = RTL / "top" / "dma_gateway_hybrid_board_wrapper.v"
-EXPORT_TCL = HCS_SOC / "export_dma_gateway_hybrid_xsa.tcl"
-EXPORT_PS1 = HCS_SOC / "export_dma_gateway_hybrid_xsa.ps1"
+EXPORT_TCL = LEGACY_SCRIPTS / "export_dma_gateway_hybrid_xsa.tcl"
+EXPORT_PS1 = LEGACY_SCRIPTS / "export_dma_gateway_hybrid_xsa.ps1"
 BENCH_SV = TB / "tb_dma_gateway_hybrid_board_wrapper.sv"
 RING_DRIVER_C = HCS_SOC / "dma_mvp_ps_driver_ref.c"
 DMA_HW_REGS_H = HCS_SOC / "dma_hw_regs.h"
-PROOF_APP_C = HCS_SOC / "ax7020_dma_gateway_hybrid_perf_proof_app" / "src" / "main.c"
+PROOF_APP_C = LEGACY_APPS / "ax7020_dma_gateway_hybrid_perf_proof_app" / "src" / "main.c"
 CRYPTO_DMA_SUBSYSTEM_SV = RTL / "top" / "crypto_dma_subsystem.sv"
 SOURCE_READER_SV = RTL / "core" / "dma" / "dma_crypto_source_reader.sv"
 DMA_MASTER_ENGINE_SV = RTL / "core" / "dma" / "dma_master_engine.sv"
@@ -71,10 +74,21 @@ class TestDmaGatewayHybridContracts(unittest.TestCase):
             "unaligned frames must never drive DMA tvalid",
             "drop_wrong_port_frame",
             "drop_unaligned_frame",
+            "m_axis_dma_terror",
+            "payload_bytes_remaining_q",
+            "length_error_q",
+            "length_error_now",
+            "udp_payload_bytes_now",
+            "payload_bytes_remaining_q <= udp_payload_bytes_now;",
+            "length_error_q <= 1'b1;",
         ):
             self.assertIn(token, text)
 
         self.assertIn("assign o_dma_idle = !m_axis_dma_tvalid;", text)
+        self.assertIn(
+            "assign m_axis_dma_terror = s_axis_tvalid && accept_frame_q && (state_q == STATE_PAYLOAD) && s_axis_tlast && (length_error_q || length_error_now);",
+            text,
+        )
 
     def test_hybrid_wrapper_uses_stage1_classifier_and_crypto_dma_windows(self):
         text = WRAPPER_SV.read_text(encoding="ascii")
@@ -95,6 +109,7 @@ class TestDmaGatewayHybridContracts(unittest.TestCase):
             ".rx_wr_data(classifier_dma_tdata)",
             ".rx_wr_valid(classifier_dma_tvalid)",
             ".rx_wr_last(classifier_dma_tlast)",
+            ".rx_wr_error(classifier_dma_terror)",
             ".rx_wr_ready(classifier_dma_tready)",
             ".m_axis_awaddr(m_axi_dma_wr_awaddr)",
             ".m_axis_s2mm_awaddr(m_axi_s2mm_awaddr)",
@@ -293,6 +308,29 @@ class TestDmaGatewayHybridContracts(unittest.TestCase):
         ):
             self.assertIn(token, text)
 
+    def test_dma_master_engine_rejects_unaligned_total_length_instead_of_truncating(self):
+        text = DMA_MASTER_ENGINE_SV.read_text(encoding="ascii")
+
+        for token in (
+            "logic                    len_unaligned;",
+            "assign len_unaligned = (i_total_len[1:0] != 2'b00);",
+            "if (i_start && (addr_unaligned || len_unaligned)) begin",
+            "if (i_start && i_total_len != 0 && !addr_unaligned && !len_unaligned) begin",
+            "else if (i_start && i_total_len != 0 && !addr_unaligned && !len_unaligned) begin",
+        ):
+            self.assertIn(token, text)
+
+        self.assertNotIn("bytes_remaining <= {i_total_len[31:2], 2'b00};", text)
+
+    def test_dma_master_engine_outstanding_limit_matches_active_axi_contract(self):
+        text = DMA_MASTER_ENGINE_SV.read_text(encoding="ascii")
+
+        self.assertIn("parameter integer MAX_OUTSTANDING_WRITES = 1", text)
+        self.assertIn(
+            "assign aw_issue_allowed = (outstanding_writes < MAX_OUTSTANDING_WRITES);",
+            text,
+        )
+
     def test_testbenches_tie_new_debug_csr_ports_low(self):
         ring_tb = TB_RING_WRITEBACK_SV.read_text(encoding="ascii")
         full_tb = TB_FULL_SYSTEM_SV.read_text(encoding="utf-8", errors="ignore")
@@ -338,10 +376,28 @@ class TestDmaGatewayHybridContracts(unittest.TestCase):
             "function automatic [31:0] dma_sink_word_order",
             "dma_sink_word_order = {value[7:0], value[15:8], value[23:16], value[31:24]};",
             "muxed_crypto_data = dma_sink_word_order(crypto_to_dma_data);",
-            "tx_data_from_crypto = crypto_to_dma_data;",
+            "tx_axis_tdata = 32'b0;",
+            "tx_axis_tvalid = 1'b0;",
+            "tx_axis_tlast = 1'b0;",
+            "tx_axis_tkeep = 4'h0;",
+            "tx_axis_tdata = crypto_to_dma_data;",
+            "tx_axis_tvalid = !crypto_to_dma_empty;",
+            "tx_axis_tlast = crypto_to_dma_last;",
+            "tx_axis_tkeep = 4'hF;",
             ".NUM_INSTANCES(CRYPTO_NUM_INSTANCES)",
         ):
             self.assertIn(token, text)
+
+        for stale_token in (
+            '(* mark_debug = "true" *) logic [31:0]            tx_data_from_crypto;',
+            '(* mark_debug = "true" *) logic                   tx_valid_from_crypto;',
+            '(* mark_debug = "true" *) logic                   tx_last_from_crypto;',
+            "assign tx_axis_tdata = tx_data_from_crypto;",
+            "assign tx_axis_tvalid = tx_valid_from_crypto;",
+            "assign tx_axis_tlast = tx_last_from_crypto;",
+            "assign tx_axis_tkeep = 4'hF;",
+        ):
+            self.assertNotIn(stale_token, text)
 
     def test_dma_crypto_source_reader_uses_burst_reads_not_single_beat_arlen_zero(self):
         text = SOURCE_READER_SV.read_text(encoding="ascii")

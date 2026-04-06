@@ -5,9 +5,9 @@ import importlib.util
 
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
+LEGACY_WORKSPACES = REPO_ROOT / "HCS_SOC" / "legacy" / "workspaces"
 GATEWAY_C = (
-    REPO_ROOT
-    / "HCS_SOC"
+    LEGACY_WORKSPACES
     / "vitis_2023_udp_gateway_ws_2"
     / "ax7020_udp_gateway_app"
     / "src"
@@ -45,8 +45,7 @@ SEND_UDP_TEST = (
 )
 HANDOFF_UDP_CONTROL_PY = REPO_ROOT / "handoff" / "robeieda_porting_pack" / "tools" / "udp_crypto_control.py"
 LEGACY_LWIP_XADAPTER_C = (
-    REPO_ROOT
-    / "HCS_SOC"
+    LEGACY_WORKSPACES
     / "vitis_2023_udp_gateway_ws_2"
     / "ax7020_udp_gateway_platform"
     / "ps7_cortexa9_0"
@@ -61,6 +60,23 @@ LEGACY_LWIP_XADAPTER_C = (
     / "xilinx"
     / "netif"
     / "xadapter.c"
+)
+LEGACY_LWIP_XEMACPSIF_C = (
+    LEGACY_WORKSPACES
+    / "vitis_2023_udp_gateway_ws_2"
+    / "ax7020_udp_gateway_platform"
+    / "ps7_cortexa9_0"
+    / "standalone_domain"
+    / "bsp"
+    / "ps7_cortexa9_0"
+    / "libsrc"
+    / "lwip213_v1_0"
+    / "src"
+    / "contrib"
+    / "ports"
+    / "xilinx"
+    / "netif"
+    / "xemacpsif.c"
 )
 
 
@@ -154,6 +170,13 @@ class TestUdpGatewayShadowRuntimeContracts(unittest.TestCase):
     def test_uart_gateway_uses_driver_header_without_reincluding_hw_header(self):
         self.assertIn('#include "xuartps.h"', self.text)
         self.assertNotIn('#include "xuartps_hw.h"', self.text)
+
+    def test_shadow_runtime_cbc_readiness_notes_contract(self):
+        notes_text = self.text
+
+        self.assertIn("IV[16B] + DATA[16B * N]", notes_text)
+        self.assertIn("CBC single-flow theoretical ceiling", notes_text)
+        self.assertIn("No AXI-Lite per-packet IV programming", notes_text)
 
     def test_legacy_lwip_eth_link_detect_handles_all_known_xemac_types(self):
         xadapter_text = LEGACY_LWIP_XADAPTER_C.read_text(encoding="ascii")
@@ -306,24 +329,7 @@ class TestUdpGatewayShadowRuntimeContracts(unittest.TestCase):
 
     def test_uart_diagnostics_do_not_use_xil_printf_long_formats(self):
         long_printf = re.compile(r'xil_printf\s*\(\s*"[^"\n]*%[0-9]*l[duxX][^"\n]*"', re.S)
-        xemacpsif_text = (
-            REPO_ROOT
-            / "HCS_SOC"
-            / "vitis_2023_udp_gateway_ws_2"
-            / "ax7020_udp_gateway_platform"
-            / "ps7_cortexa9_0"
-            / "standalone_domain"
-            / "bsp"
-            / "ps7_cortexa9_0"
-            / "libsrc"
-            / "lwip213_v1_0"
-            / "src"
-            / "contrib"
-            / "ports"
-            / "xilinx"
-            / "netif"
-            / "xemacpsif.c"
-        ).read_text(encoding="utf-8")
+        xemacpsif_text = LEGACY_LWIP_XEMACPSIF_C.read_text(encoding="utf-8")
 
         self.assertIsNone(
             long_printf.search(self.text),

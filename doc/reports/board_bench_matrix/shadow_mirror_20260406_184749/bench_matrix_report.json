@@ -1,0 +1,503 @@
+{
+  "timestamp": "2026-04-06T19:02:06.489911",
+  "mode": "board_bench_matrix",
+  "target": {
+    "ip": "192.168.1.20",
+    "source_ip": "192.168.1.11",
+    "control_port": 4662,
+    "requests_per_scenario": 200,
+    "bench_repeats": 1000
+  },
+  "baseline_snapshot": {
+    "timestamp": "2026-04-06T18:47:50.501217",
+    "mode": "board_bench",
+    "acceptance_eligible": true,
+    "baseline": "ps_software_same_board",
+    "target": {
+      "ip": "192.168.1.20",
+      "source_ip": "192.168.1.11",
+      "control_port": 4662,
+      "repeats": 1000,
+      "speedup": 1.0
+    },
+    "session": {
+      "session_id": 9,
+      "binding_id": 3300527179
+    },
+    "results": {
+      "aes": {
+        "algo": "aes",
+        "repeats": 1000,
+        "records": [
+          {
+            "length_bytes": 16,
+            "workload_bytes": 16000,
+            "sw_total_us": 4914,
+            "hw_total_us": 3181,
+            "sw_avg_latency_us": 4.914,
+            "hw_avg_latency_us": 3.181,
+            "sw_throughput_mb_s": 3.105167,
+            "hw_throughput_mb_s": 4.796853,
+            "speedup": 1.544797
+          },
+          {
+            "length_bytes": 32,
+            "workload_bytes": 32000,
+            "sw_total_us": 9059,
+            "hw_total_us": 4293,
+            "sw_avg_latency_us": 9.059,
+            "hw_avg_latency_us": 4.293,
+            "sw_throughput_mb_s": 3.368758,
+            "hw_throughput_mb_s": 7.108683,
+            "speedup": 2.110179
+          },
+          {
+            "length_bytes": 128,
+            "workload_bytes": 128000,
+            "sw_total_us": 34180,
+            "hw_total_us": 11050,
+            "sw_avg_latency_us": 34.18,
+            "hw_avg_latency_us": 11.05,
+            "sw_throughput_mb_s": 3.571396,
+            "hw_throughput_mb_s": 11.047087,
+            "speedup": 3.093213
+          },
+          {
+            "length_bytes": 512,
+            "workload_bytes": 512000,
+            "sw_total_us": 133349,
+            "hw_total_us": 37921,
+            "sw_avg_latency_us": 133.349,
+            "hw_avg_latency_us": 37.921,
+            "sw_throughput_mb_s": 3.661679,
+            "hw_throughput_mb_s": 12.876276,
+            "speedup": 3.516495
+          },
+          {
+            "length_bytes": 1472,
+            "workload_bytes": 1472000,
+            "sw_total_us": 381939,
+            "hw_total_us": 105118,
+            "sw_avg_latency_us": 381.939,
+            "hw_avg_latency_us": 105.118,
+            "sw_throughput_mb_s": 3.675479,
+            "hw_throughput_mb_s": 13.354598,
+            "speedup": 3.633431
+          }
+        ],
+        "summary": {
+          "record_count": 5,
+          "min_speedup": 1.544797,
+          "max_speedup": 3.633431,
+          "avg_speedup": 2.779623
+        },
+        "meets_target": true
+      },
+      "sm4": {
+        "algo": "sm4",
+        "repeats": 1000,
+        "records": [
+          {
+            "length_bytes": 16,
+            "workload_bytes": 16000,
+            "sw_total_us": 2638,
+            "hw_total_us": 2452,
+            "sw_avg_latency_us": 2.638,
+            "hw_avg_latency_us": 2.452,
+            "sw_throughput_mb_s": 5.784226,
+            "hw_throughput_mb_s": 6.222997,
+            "speedup": 1.075856
+          },
+          {
+            "length_bytes": 32,
+            "workload_bytes": 32000,
+            "sw_total_us": 3934,
+            "hw_total_us": 2856,
+            "sw_avg_latency_us": 3.934,
+            "hw_avg_latency_us": 2.856,
+            "sw_throughput_mb_s": 7.757391,
+            "hw_throughput_mb_s": 10.685427,
+            "speedup": 1.377451
+          },
+          {
+            "length_bytes": 128,
+            "workload_bytes": 128000,
+            "sw_total_us": 11574,
+            "hw_total_us": 5278,
+            "sw_avg_latency_us": 11.574,
+            "hw_avg_latency_us": 5.278,
+            "sw_throughput_mb_s": 10.546943,
+            "hw_throughput_mb_s": 23.128138,
+            "speedup": 2.192876
+          },
+          {
+            "length_bytes": 512,
+            "workload_bytes": 512000,
+            "sw_total_us": 42139,
+            "hw_total_us": 14891,
+            "sw_avg_latency_us": 42.139,
+            "hw_avg_latency_us": 14.891,
+            "sw_throughput_mb_s": 11.587395,
+            "hw_throughput_mb_s": 32.79036,
+            "speedup": 2.82983
+          },
+          {
+            "length_bytes": 1472,
+            "workload_bytes": 1472000,
+            "sw_total_us": 118546,
+            "hw_total_us": 38995,
+            "sw_avg_latency_us": 118.546,
+            "hw_avg_latency_us": 38.995,
+            "sw_throughput_mb_s": 11.841889,
+            "hw_throughput_mb_s": 35.999707,
+            "speedup": 3.040031
+          }
+        ],
+        "summary": {
+          "record_count": 5,
+          "min_speedup": 1.075856,
+          "max_speedup": 3.040031,
+          "avg_speedup": 2.103209
+        },
+        "meets_target": true
+      }
+    },
+    "overall": {
+      "meets_target": true
+    }
+  },
+  "matrix_results": [
+    {
+      "load_mode": "aes_only",
+      "payload_len": 64,
+      "acl_mode": "acl_off",
+      "request_count": 200,
+      "success_count": 200,
+      "timeout_count": 0,
+      "mismatch_count": 0,
+      "success_rate": 1.0,
+      "avg_latency_us": 389945.6195,
+      "p50_latency_us": 389898.9,
+      "p95_latency_us": 389940.0,
+      "throughput_mb_s": 0.000157
+    },
+    {
+      "load_mode": "aes_only",
+      "payload_len": 64,
+      "acl_mode": "acl_on_nonmatching",
+      "request_count": 200,
+      "success_count": 200,
+      "timeout_count": 0,
+      "mismatch_count": 0,
+      "success_rate": 1.0,
+      "avg_latency_us": 389948.159,
+      "p50_latency_us": 389899.3,
+      "p95_latency_us": 389938.0,
+      "throughput_mb_s": 0.000157
+    },
+    {
+      "load_mode": "aes_only",
+      "payload_len": 512,
+      "acl_mode": "acl_off",
+      "request_count": 200,
+      "success_count": 200,
+      "timeout_count": 0,
+      "mismatch_count": 0,
+      "success_rate": 1.0,
+      "avg_latency_us": 135330.2575,
+      "p50_latency_us": 135312.5,
+      "p95_latency_us": 135349.2,
+      "throughput_mb_s": 0.003608
+    },
+    {
+      "load_mode": "aes_only",
+      "payload_len": 512,
+      "acl_mode": "acl_on_nonmatching",
+      "request_count": 200,
+      "success_count": 200,
+      "timeout_count": 0,
+      "mismatch_count": 0,
+      "success_rate": 1.0,
+      "avg_latency_us": 135300.836,
+      "p50_latency_us": 135312.0,
+      "p95_latency_us": 135347.2,
+      "throughput_mb_s": 0.003609
+    },
+    {
+      "load_mode": "aes_only",
+      "payload_len": 1472,
+      "acl_mode": "acl_off",
+      "request_count": 200,
+      "success_count": 200,
+      "timeout_count": 0,
+      "mismatch_count": 0,
+      "success_rate": 1.0,
+      "avg_latency_us": 168777.5755,
+      "p50_latency_us": 168729.6,
+      "p95_latency_us": 168770.5,
+      "throughput_mb_s": 0.008318
+    },
+    {
+      "load_mode": "aes_only",
+      "payload_len": 1472,
+      "acl_mode": "acl_on_nonmatching",
+      "request_count": 200,
+      "success_count": 200,
+      "timeout_count": 0,
+      "mismatch_count": 0,
+      "success_rate": 1.0,
+      "avg_latency_us": 168748.343,
+      "p50_latency_us": 168730.4,
+      "p95_latency_us": 168770.6,
+      "throughput_mb_s": 0.008319
+    },
+    {
+      "load_mode": "sm4_only",
+      "payload_len": 64,
+      "acl_mode": "acl_off",
+      "request_count": 200,
+      "success_count": 200,
+      "timeout_count": 0,
+      "mismatch_count": 0,
+      "success_rate": 1.0,
+      "avg_latency_us": 389978.791,
+      "p50_latency_us": 389900.7,
+      "p95_latency_us": 389928.7,
+      "throughput_mb_s": 0.000157
+    },
+    {
+      "load_mode": "sm4_only",
+      "payload_len": 64,
+      "acl_mode": "acl_on_nonmatching",
+      "request_count": 200,
+      "success_count": 200,
+      "timeout_count": 0,
+      "mismatch_count": 0,
+      "success_rate": 1.0,
+      "avg_latency_us": 390124.4465,
+      "p50_latency_us": 389900.3,
+      "p95_latency_us": 389947.3,
+      "throughput_mb_s": 0.000156
+    },
+    {
+      "load_mode": "sm4_only",
+      "payload_len": 512,
+      "acl_mode": "acl_off",
+      "request_count": 200,
+      "success_count": 200,
+      "timeout_count": 0,
+      "mismatch_count": 0,
+      "success_rate": 1.0,
+      "avg_latency_us": 135332.93,
+      "p50_latency_us": 135313.1,
+      "p95_latency_us": 135343.9,
+      "throughput_mb_s": 0.003608
+    },
+    {
+      "load_mode": "sm4_only",
+      "payload_len": 512,
+      "acl_mode": "acl_on_nonmatching",
+      "request_count": 200,
+      "success_count": 200,
+      "timeout_count": 0,
+      "mismatch_count": 0,
+      "success_rate": 1.0,
+      "avg_latency_us": 135361.4155,
+      "p50_latency_us": 135312.5,
+      "p95_latency_us": 135347.6,
+      "throughput_mb_s": 0.003607
+    },
+    {
+      "load_mode": "sm4_only",
+      "payload_len": 1472,
+      "acl_mode": "acl_off",
+      "request_count": 200,
+      "success_count": 200,
+      "timeout_count": 0,
+      "mismatch_count": 0,
+      "success_rate": 1.0,
+      "avg_latency_us": 168774.7625,
+      "p50_latency_us": 168730.1,
+      "p95_latency_us": 168769.6,
+      "throughput_mb_s": 0.008318
+    },
+    {
+      "load_mode": "sm4_only",
+      "payload_len": 1472,
+      "acl_mode": "acl_on_nonmatching",
+      "request_count": 200,
+      "success_count": 200,
+      "timeout_count": 0,
+      "mismatch_count": 0,
+      "success_rate": 1.0,
+      "avg_latency_us": 168749.982,
+      "p50_latency_us": 168729.5,
+      "p95_latency_us": 168775.9,
+      "throughput_mb_s": 0.008319
+    },
+    {
+      "load_mode": "mixed_alt_50_50",
+      "payload_len": 64,
+      "acl_mode": "acl_off",
+      "request_count": 200,
+      "success_count": 200,
+      "timeout_count": 0,
+      "mismatch_count": 0,
+      "success_rate": 1.0,
+      "avg_latency_us": 389920.704,
+      "p50_latency_us": 389899.4,
+      "p95_latency_us": 389939.4,
+      "throughput_mb_s": 0.000157,
+      "aes_request_count": 100,
+      "sm4_request_count": 100,
+      "aes_avg_latency_us": 389940.833,
+      "sm4_avg_latency_us": 389900.575
+    },
+    {
+      "load_mode": "mixed_alt_50_50",
+      "payload_len": 64,
+      "acl_mode": "acl_on_nonmatching",
+      "request_count": 200,
+      "success_count": 200,
+      "timeout_count": 0,
+      "mismatch_count": 0,
+      "success_rate": 1.0,
+      "avg_latency_us": 389916.5395,
+      "p50_latency_us": 389900.1,
+      "p95_latency_us": 389933.7,
+      "throughput_mb_s": 0.000157,
+      "aes_request_count": 100,
+      "sm4_request_count": 100,
+      "aes_avg_latency_us": 389876.987,
+      "sm4_avg_latency_us": 389956.092
+    },
+    {
+      "load_mode": "mixed_alt_50_50",
+      "payload_len": 512,
+      "acl_mode": "acl_off",
+      "request_count": 200,
+      "success_count": 200,
+      "timeout_count": 0,
+      "mismatch_count": 0,
+      "success_rate": 1.0,
+      "avg_latency_us": 135332.0755,
+      "p50_latency_us": 135311.3,
+      "p95_latency_us": 135346.2,
+      "throughput_mb_s": 0.003608,
+      "aes_request_count": 100,
+      "sm4_request_count": 100,
+      "aes_avg_latency_us": 135350.48,
+      "sm4_avg_latency_us": 135313.671
+    },
+    {
+      "load_mode": "mixed_alt_50_50",
+      "payload_len": 512,
+      "acl_mode": "acl_on_nonmatching",
+      "request_count": 200,
+      "success_count": 200,
+      "timeout_count": 0,
+      "mismatch_count": 0,
+      "success_rate": 1.0,
+      "avg_latency_us": 135324.8355,
+      "p50_latency_us": 135310.2,
+      "p95_latency_us": 135337.8,
+      "throughput_mb_s": 0.003608,
+      "aes_request_count": 100,
+      "sm4_request_count": 100,
+      "aes_avg_latency_us": 135279.226,
+      "sm4_avg_latency_us": 135370.445
+    },
+    {
+      "load_mode": "mixed_alt_50_50",
+      "payload_len": 1472,
+      "acl_mode": "acl_off",
+      "request_count": 200,
+      "success_count": 200,
+      "timeout_count": 0,
+      "mismatch_count": 0,
+      "success_rate": 1.0,
+      "avg_latency_us": 168748.826,
+      "p50_latency_us": 168729.9,
+      "p95_latency_us": 168764.9,
+      "throughput_mb_s": 0.008319,
+      "aes_request_count": 100,
+      "sm4_request_count": 100,
+      "aes_avg_latency_us": 168770.063,
+      "sm4_avg_latency_us": 168727.589
+    },
+    {
+      "load_mode": "mixed_alt_50_50",
+      "payload_len": 1472,
+      "acl_mode": "acl_on_nonmatching",
+      "request_count": 200,
+      "success_count": 200,
+      "timeout_count": 0,
+      "mismatch_count": 0,
+      "success_rate": 1.0,
+      "avg_latency_us": 168714.438,
+      "p50_latency_us": 168730.4,
+      "p95_latency_us": 168769.5,
+      "throughput_mb_s": 0.008321,
+      "aes_request_count": 100,
+      "sm4_request_count": 100,
+      "aes_avg_latency_us": 168696.55,
+      "sm4_avg_latency_us": 168732.326
+    }
+  ],
+  "acl_deltas": [
+    {
+      "load_mode": "aes_only",
+      "payload_len": 64,
+      "avg_latency_delta_us": 2.5395,
+      "throughput_delta_mb_s": 0.0
+    },
+    {
+      "load_mode": "aes_only",
+      "payload_len": 512,
+      "avg_latency_delta_us": -29.4215,
+      "throughput_delta_mb_s": 1e-06
+    },
+    {
+      "load_mode": "aes_only",
+      "payload_len": 1472,
+      "avg_latency_delta_us": -29.2325,
+      "throughput_delta_mb_s": 1e-06
+    },
+    {
+      "load_mode": "mixed_alt_50_50",
+      "payload_len": 64,
+      "avg_latency_delta_us": -4.1645,
+      "throughput_delta_mb_s": 0.0
+    },
+    {
+      "load_mode": "mixed_alt_50_50",
+      "payload_len": 512,
+      "avg_latency_delta_us": -7.24,
+      "throughput_delta_mb_s": 0.0
+    },
+    {
+      "load_mode": "mixed_alt_50_50",
+      "payload_len": 1472,
+      "avg_latency_delta_us": -34.388,
+      "throughput_delta_mb_s": 2e-06
+    },
+    {
+      "load_mode": "sm4_only",
+      "payload_len": 64,
+      "avg_latency_delta_us": 145.6555,
+      "throughput_delta_mb_s": -1e-06
+    },
+    {
+      "load_mode": "sm4_only",
+      "payload_len": 512,
+      "avg_latency_delta_us": 28.4855,
+      "throughput_delta_mb_s": -1e-06
+    },
+    {
+      "load_mode": "sm4_only",
+      "payload_len": 1472,
+      "avg_latency_delta_us": -24.7805,
+      "throughput_delta_mb_s": 1e-06
+    }
+  ]
+}

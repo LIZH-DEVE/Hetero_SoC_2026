@@ -1,0 +1,184 @@
+{
+  "timestamp": "2026-03-31T13:42:05.709529",
+  "mode": "board_bench",
+  "acceptance_eligible": true,
+  "baseline": "ps_software_same_board",
+  "target": {
+    "ip": "uart-proof",
+    "source_ip": "uart-proof",
+    "control_port": 0,
+    "repeats": 1000,
+    "speedup": 1.0
+  },
+  "session": {
+    "session_id": 0,
+    "binding_id": 0
+  },
+  "results": {
+    "aes": {
+      "algo": "aes",
+      "repeats": 1000,
+      "records": [
+        {
+          "length_bytes": 16,
+          "workload_bytes": 16000,
+          "sw_total_us": 5251,
+          "hw_total_us": 4551,
+          "sw_avg_latency_us": 5.251,
+          "hw_avg_latency_us": 4.551,
+          "sw_throughput_mb_s": 2.905883,
+          "hw_throughput_mb_s": 3.352843,
+          "speedup": 1.153812
+        },
+        {
+          "length_bytes": 32,
+          "workload_bytes": 32000,
+          "sw_total_us": 9757,
+          "hw_total_us": 6242,
+          "sw_avg_latency_us": 9.757,
+          "hw_avg_latency_us": 6.242,
+          "sw_throughput_mb_s": 3.127762,
+          "hw_throughput_mb_s": 4.889071,
+          "speedup": 1.563121
+        },
+        {
+          "length_bytes": 128,
+          "workload_bytes": 128000,
+          "sw_total_us": 36550,
+          "hw_total_us": 16681,
+          "sw_avg_latency_us": 36.55,
+          "hw_avg_latency_us": 16.681,
+          "sw_throughput_mb_s": 3.339817,
+          "hw_throughput_mb_s": 7.317925,
+          "speedup": 2.191116
+        },
+        {
+          "length_bytes": 512,
+          "workload_bytes": 512000,
+          "sw_total_us": 143722,
+          "hw_total_us": 58492,
+          "sw_avg_latency_us": 143.722,
+          "hw_avg_latency_us": 58.492,
+          "sw_throughput_mb_s": 3.397401,
+          "hw_throughput_mb_s": 8.34783,
+          "speedup": 2.457122
+        },
+        {
+          "length_bytes": 1472,
+          "workload_bytes": 1472000,
+          "sw_total_us": 410860,
+          "hw_total_us": 162335,
+          "sw_avg_latency_us": 410.86,
+          "hw_avg_latency_us": 162.335,
+          "sw_throughput_mb_s": 3.416757,
+          "hw_throughput_mb_s": 8.647603,
+          "speedup": 2.530939
+        }
+      ],
+      "summary": {
+        "record_count": 5,
+        "min_speedup": 1.153812,
+        "max_speedup": 2.530939,
+        "avg_speedup": 1.979222
+      },
+      "diagnostics": {
+        "single_launch_used": true,
+        "batch_descriptor_count": 1000,
+        "doorbell_count": 1,
+        "last_descriptor_poll_count": 562530,
+        "actual_len_mismatch_count": 0,
+        "cipher_mismatch_count": 0,
+        "descriptor_error_count": 0,
+        "completion_timeout_count": 0,
+        "transport": "uart_stage2_proof"
+      },
+      "meets_target": true
+    },
+    "sm4": {
+      "algo": "sm4",
+      "repeats": 1000,
+      "records": [
+        {
+          "length_bytes": 16,
+          "workload_bytes": 16000,
+          "sw_total_us": 2216,
+          "hw_total_us": 3901,
+          "sw_avg_latency_us": 2.216,
+          "hw_avg_latency_us": 3.901,
+          "sw_throughput_mb_s": 6.885735,
+          "hw_throughput_mb_s": 3.911507,
+          "speedup": 0.568059
+        },
+        {
+          "length_bytes": 32,
+          "workload_bytes": 32000,
+          "sw_total_us": 3389,
+          "hw_total_us": 5510,
+          "sw_avg_latency_us": 3.389,
+          "hw_avg_latency_us": 5.51,
+          "sw_throughput_mb_s": 9.004892,
+          "hw_throughput_mb_s": 5.53858,
+          "speedup": 0.615064
+        },
+        {
+          "length_bytes": 128,
+          "workload_bytes": 128000,
+          "sw_total_us": 10374,
+          "hw_total_us": 15606,
+          "sw_avg_latency_us": 10.374,
+          "hw_avg_latency_us": 15.606,
+          "sw_throughput_mb_s": 11.766947,
+          "hw_throughput_mb_s": 7.822012,
+          "speedup": 0.664744
+        },
+        {
+          "length_bytes": 512,
+          "workload_bytes": 512000,
+          "sw_total_us": 38315,
+          "hw_total_us": 57525,
+          "sw_avg_latency_us": 38.315,
+          "hw_avg_latency_us": 57.525,
+          "sw_throughput_mb_s": 12.743867,
+          "hw_throughput_mb_s": 8.488157,
+          "speedup": 0.666058
+        },
+        {
+          "length_bytes": 1472,
+          "workload_bytes": 1472000,
+          "sw_total_us": 108155,
+          "hw_total_us": 161514,
+          "sw_avg_latency_us": 108.155,
+          "hw_avg_latency_us": 161.514,
+          "sw_throughput_mb_s": 12.9796,
+          "hw_throughput_mb_s": 8.69156,
+          "speedup": 0.669632
+        }
+      ],
+      "summary": {
+        "record_count": 5,
+        "min_speedup": 0.568059,
+        "max_speedup": 0.669632,
+        "avg_speedup": 0.636712
+      },
+      "diagnostics": {
+        "single_launch_used": true,
+        "batch_descriptor_count": 1000,
+        "doorbell_count": 1,
+        "last_descriptor_poll_count": 559522,
+        "actual_len_mismatch_count": 0,
+        "cipher_mismatch_count": 0,
+        "descriptor_error_count": 0,
+        "completion_timeout_count": 0,
+        "transport": "uart_stage2_proof"
+      },
+      "meets_target": false
+    }
+  },
+  "overall": {
+    "meets_target": false
+  },
+  "source": "uart_stage2_proof",
+  "capture": {
+    "uart_log": "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\board_uart_boot_115200_20260331_134004.txt"
+  }
+}

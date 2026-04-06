@@ -149,6 +149,7 @@ module axil_csr #(
     
     // [Day 11] 0x10: Loopback Mode
     logic [31:0] reg_loopback_mode; 
+    logic [31:0] reg_loopback_mode_sync;
 
     // 0x08: DMA Linear Base Address
     logic [31:0] reg_base_addr;
@@ -178,6 +179,7 @@ module axil_csr #(
 
     // [Day 11] 0x5C: Ring Size
     logic [31:0] reg_ring_size;
+    logic [31:0] reg_ring_size_sync;
 
     // Raw-copy IRQ control window (0x60 - 0x70) when RAW_COPY_IRQ_WINDOW=1.
     logic [31:0] reg_irq_enable;
@@ -452,6 +454,19 @@ module axil_csr #(
         end
     end
 
+    // Keep PBM control-facing ring/loopback configuration on a synchronous
+    // output stage so downstream BRAM enable logic is not driven directly from
+    // async-reset CSR flops.
+    always_ff @(posedge clk) begin
+        if (!rst_n) begin
+            reg_loopback_mode_sync <= 32'd0;
+            reg_ring_size_sync <= 32'd0;
+        end else begin
+            reg_loopback_mode_sync <= reg_loopback_mode;
+            reg_ring_size_sync <= reg_ring_size;
+        end
+    end
+
     // -------------------------------------------------------------------------
     // Read Channel Logic
     // -------------------------------------------------------------------------
@@ -576,11 +591,11 @@ module axil_csr #(
     assign o_s2mm_data    = reg_s2mm_data;
     
     // Day 11 Loopback mode output
-    assign o_loopback_mode = reg_loopback_mode[1:0]; // Bit[1:0]: 0=Normal, 1=DDR Loopback, 2=PBM Passthrough
+    assign o_loopback_mode = reg_loopback_mode_sync[1:0]; // Bit[1:0]: 0=Normal, 1=DDR Loopback, 2=PBM Passthrough
     
     // Day 11 Ring outputs
     assign o_ring_base   = reg_ring_base;
-    assign o_ring_size   = reg_ring_size;
+    assign o_ring_size   = reg_ring_size_sync;
     assign o_sw_tail_ptr = reg_ring_tail[15:0];
     assign o_irq_enable = reg_irq_enable[DMA_IRQ_ENABLE_BIT_DONE];
     assign o_irq_coalesce_count = reg_irq_coalesce_count;

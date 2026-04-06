@@ -35,6 +35,11 @@ module crypto_dma_subsystem #(
     input  logic                   rx_wr_valid,
     input  logic [31:0]            rx_wr_data,
     input  logic                   rx_wr_last,
+    input  logic                   rx_wr_error,
+    input  logic                   rx_wr_pkt_start,
+    input  logic                   rx_wr_pkt_end,
+    input  logic                   rx_wr_cbc_mode,
+    input  logic [127:0]           rx_wr_iv_header,
     output logic                   rx_wr_ready,
 
     // =========================================================================
@@ -178,13 +183,14 @@ module crypto_dma_subsystem #(
     (* mark_debug = "true" *) logic                   crypto_to_dma_last;
     (* mark_debug = "true" *) logic                   dma_req_rd;
     logic                                              bridge_tx_rd_en;
+    logic                                              bridge_pkt_start;
+    logic                                              bridge_pkt_end;
+    logic                                              bridge_pkt_cbc_mode;
+    logic [127:0]                                      bridge_iv_header;
 
     // Loopback Mux signals
     (* mark_debug = "true" *) logic [31:0]            muxed_crypto_data;
     (* mark_debug = "true" *) logic                   muxed_crypto_empty;
-    (* mark_debug = "true" *) logic [31:0]            tx_data_from_crypto;
-    (* mark_debug = "true" *) logic                   tx_valid_from_crypto;
-    (* mark_debug = "true" *) logic                   tx_last_from_crypto;
     
     // DMA Engine internal signals
     logic [31:0]            dma_awaddr, dma_wdata;
@@ -268,34 +274,30 @@ module crypto_dma_subsystem #(
     // 2'b10: PBM Passthrough - PBM -> Crypto -> TX Output (bypass DMA)
     
     always_comb begin
+        tx_axis_tdata = 32'b0;
+        tx_axis_tvalid = 1'b0;
+        tx_axis_tlast = 1'b0;
+        tx_axis_tkeep = 4'h0;
         case (loopback_mode)
             2'b00: begin  // Normal mode
                 muxed_crypto_data = dma_sink_word_order(crypto_to_dma_data);
                 muxed_crypto_empty = crypto_to_dma_empty;
-                tx_data_from_crypto = crypto_to_dma_data;
-                tx_valid_from_crypto = !crypto_to_dma_empty;
-                tx_last_from_crypto = crypto_to_dma_last;
             end
             2'b01: begin  // DDR Loopback mode
                 muxed_crypto_data = dma_sink_word_order(crypto_to_dma_data);
                 muxed_crypto_empty = crypto_to_dma_empty;
-                tx_data_from_crypto = 32'b0;
-                tx_valid_from_crypto = 1'b0;
-                tx_last_from_crypto = 1'b0;
             end
             2'b10: begin  // PBM Passthrough mode
                 muxed_crypto_data = dma_sink_word_order(crypto_to_dma_data);
                 muxed_crypto_empty = crypto_to_dma_empty;
-                tx_data_from_crypto = crypto_to_dma_data;
-                tx_valid_from_crypto = !crypto_to_dma_empty;
-                tx_last_from_crypto = crypto_to_dma_last;
+                tx_axis_tdata = crypto_to_dma_data;
+                tx_axis_tvalid = !crypto_to_dma_empty;
+                tx_axis_tlast = crypto_to_dma_last;
+                tx_axis_tkeep = 4'hF;
             end
             default: begin  // Default to Normal mode
                 muxed_crypto_data = dma_sink_word_order(crypto_to_dma_data);
                 muxed_crypto_empty = crypto_to_dma_empty;
-                tx_data_from_crypto = 32'b0;
-                tx_valid_from_crypto = 1'b0;
-                tx_last_from_crypto = 1'b0;
             end
         endcase
     end
@@ -319,6 +321,10 @@ module crypto_dma_subsystem #(
     assign crypto_src_valid = use_desc_source ? source_rd_valid : bridge_rd_valid;
     assign source_rd_en = use_desc_source ? crypto_src_rd_en : 1'b0;
     assign bridge_rd_pbm = use_desc_source ? 1'b0 : crypto_src_rd_en;
+    assign bridge_pkt_start = rx_wr_pkt_start;
+    assign bridge_pkt_end = rx_wr_pkt_end;
+    assign bridge_pkt_cbc_mode = rx_wr_cbc_mode;
+    assign bridge_iv_header = rx_wr_iv_header;
     assign dma_done = sink_done;
     assign dma_error = sink_error || source_error;
     assign dma_status_bresp = sink_bresp;
@@ -436,6 +442,7 @@ module crypto_dma_subsystem #(
     assign m_axis_s2mm_awburst = s2mm_awburst;
     assign m_axis_s2mm_awcache = s2mm_awcache;
     assign m_axis_s2mm_awprot = s2mm_awprot;
+    assign m_axis_s2mm_awvalid = s2mm_awvalid;
     assign m_axis_s2mm_wdata = s2mm_wdata;
     assign m_axis_s2mm_wstrb = s2mm_wstrb;
     assign m_axis_s2mm_wlast = s2mm_wlast;
@@ -460,15 +467,7 @@ module crypto_dma_subsystem #(
     assign s2mm_rvalid_in = use_desc_source ? 1'b0 : m_axis_s2mm_rvalid;
 
     // =========================================================================
-    // 4. TX Output Interface
-    // =========================================================================
-    assign tx_axis_tdata = tx_data_from_crypto;
-    assign tx_axis_tvalid = tx_valid_from_crypto;
-    assign tx_axis_tlast = tx_last_from_crypto;
-    assign tx_axis_tkeep = 4'hF;
-
-    // =========================================================================
-    // 5. Module Instantiations
+    // 4. Module Instantiations
     // =========================================================================
 
     always_ff @(posedge clk or negedge rst_n) begin
@@ -611,7 +610,7 @@ module crypto_dma_subsystem #(
     // PBM Controller
     pbm_controller #(.PBM_ADDR_WIDTH(14), .DATA_WIDTH(DATA_WIDTH)) u_pbm (
         .clk(clk), .rst_n(rst_n),
-        .i_wr_valid(rx_wr_valid), .i_wr_data(rx_wr_data), .i_wr_last(rx_wr_last), .i_wr_error(1'b0),
+        .i_wr_valid(rx_wr_valid), .i_wr_data(rx_wr_data), .i_wr_last(rx_wr_last), .i_wr_error(rx_wr_error),
         .o_wr_ready(rx_wr_ready), .o_rd_data(pbm_data), .o_rd_empty(pbm_empty), .o_rd_valid(bridge_rd_valid), .i_rd_en(bridge_rd_pbm), .o_buffer_usage(), .o_rollback_active()
     );
 
@@ -629,6 +628,8 @@ module crypto_dma_subsystem #(
           .o_debug_last_plaintext(bridge_debug_last_plaintext),
           .o_debug_key_lo_active(bridge_debug_key_lo_active),
           .i_pbm_data(crypto_src_data), .i_pbm_empty(crypto_src_empty), .i_pbm_valid(crypto_src_valid),
+          .i_pkt_start(bridge_pkt_start), .i_pkt_end(bridge_pkt_end),
+          .i_cbc_mode(bridge_pkt_cbc_mode), .i_iv_header(bridge_iv_header),
           .o_pbm_rd_en(crypto_src_rd_en),
         .o_tx_data(crypto_to_dma_data),
         .o_tx_last(crypto_to_dma_last),

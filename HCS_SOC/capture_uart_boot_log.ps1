@@ -21,7 +21,9 @@ $repoRoot = Split-Path -Parent $workspace
 
 if (-not $OutputPath) {
     $stamp = Get-Date -Format "yyyyMMdd_HHmmss"
-    $OutputPath = Join-Path $repoRoot ("board_uart_boot_{0}_{1}.txt" -f $Baud, $stamp)
+    $outputDir = Join-Path $repoRoot "doc\reports\board_uart"
+    New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
+    $OutputPath = Join-Path $outputDir ("board_uart_boot_{0}_{1}.txt" -f $Baud, $stamp)
 }
 
 $encoding = [System.Text.Encoding]::GetEncoding("ISO-8859-1")

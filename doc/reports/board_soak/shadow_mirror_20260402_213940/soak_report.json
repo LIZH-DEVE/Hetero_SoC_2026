@@ -1,0 +1,41 @@
+{
+    "mode":  "sd cold-start soak",
+    "result":  "FAIL",
+    "failure_reason":  "Cold-start soak did not capture any UART boot data.",
+    "assume_running":  false,
+    "cold_start":  true,
+    "boot_evidence_found":  false,
+    "boot_evidence_lines":  [
+
+                            ],
+    "deploy_used":  false,
+    "target_ip":  "192.168.1.20",
+    "source_ip":  "192.168.1.11",
+    "control_port":  4662,
+    "duration_minutes_requested":  1,
+    "cycle_interval_seconds":  15,
+    "start_time":  "2026-04-02T21:39:40.1353164+08:00",
+    "end_time":  "2026-04-02T21:40:05.5883244+08:00",
+    "first_control_success_utc":  null,
+    "first_data_success_utc":  null,
+    "session_id":  null,
+    "binding_id":  null,
+    "uart_log_path":  "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\board_uart_boot_115200_20260402_213940.txt",
+    "report_dir":  "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\doc\\reports\\board_soak\\shadow_mirror_20260402_213940",
+    "cycles_completed":  0,
+    "aes_probe_count":  0,
+    "sm4_probe_count":  0,
+    "acl_probe_count":  0,
+    "replay_probe_count":  0,
+    "hard_bad_uart_evidence":  [
+
+                               ],
+    "soft_uart_warnings":  [
+                               "UART log file was not created: D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\board_uart_boot_115200_20260402_213940.txt"
+                           ],
+    "baseline_status":  null,
+    "final_status":  null,
+    "cycles":  [
+
+               ]
+}

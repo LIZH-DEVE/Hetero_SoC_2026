@@ -1,0 +1,3 @@
+xemacpsif_input: pkt=257698039814 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2054 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=22 total=22

@@ -1,0 +1,21 @@
+Pblock Summary
+
+==== shadow_core_region ====
+Property               Type     Read-only  Value
+CELL_COUNT             int      true       2
+CLASS                  string   true       pblock
+CONTAIN_ROUTING        bool     false      0
+DERIVED_RANGES         string*  true       RAMB36_X2Y0:RAMB36_X4Y29 RAMB36_X0Y0:RAMB36_X1Y9 RAMB18_X2Y0:RAMB18_X4Y59 RAMB18_X0Y0:RAMB18_X1Y19 DSP48_X2Y0:DSP48_X3Y59 DSP48_X0Y0:DSP48_X1Y19 SLICE_X80Y0:SLICE_X95Y149 SLICE_X68Y0:SLICE_X79Y49 SLICE_X26Y0:SLICE_X67Y149 SLICE_X0Y0:SLICE_X25Y49
+EXCLUDE_PLACEMENT      bool     false      0
+GRIDTYPES              string   false      SLICE DSP48 RAMB18 RAMB36
+GRID_RANGES            string*  true       RAMB36_X2Y0:RAMB36_X4Y29 RAMB36_X0Y0:RAMB36_X1Y9 RAMB18_X2Y0:RAMB18_X4Y59 RAMB18_X0Y0:RAMB18_X1Y19 DSP48_X2Y0:DSP48_X3Y59 DSP48_X0Y0:DSP48_X1Y19 SLICE_X80Y50:SLICE_X95Y149 SLICE_X26Y50:SLICE_X67Y149 SLICE_X0Y0:SLICE_X95Y49
+IS_SOFT                bool     false      1
+NAME                   string   false      shadow_core_region
+PARENT                 string   false      ROOT
+PARTPIN_SPREADING      int      false      5
+PRIMITIVE_COUNT        int      true       53400
+RECTANGLE_COUNT        int      true       1
+RECTANGLE_SITES        string*  true       { 2 0 4 29 } { 0 0 1 9 } { 2 0 4 59 } { 0 0 1 19 } { 2 0 3 59 } { 0 0 1 19 } { 80 50 95 149 } { 26 50 67 149 } { 0 0 95 49 }
+RECTANGLE_SITES_COUNT  int      true       11090
+RESET_AFTER_RECONFIG   bool     false      0
+SNAPPING_MODE          enum     false      

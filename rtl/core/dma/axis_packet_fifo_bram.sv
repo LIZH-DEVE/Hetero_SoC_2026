@@ -46,7 +46,7 @@ module axis_packet_fifo_bram #(
     assign m_axis_tdata  = data_mem[rd_ptr];
     assign m_axis_tlast  = last_mem[rd_ptr];
 
-    always_ff @(posedge clk or negedge rst_n) begin
+    always_ff @(posedge clk) begin
         if (!rst_n) begin
             wr_ptr  <= '0;
             rd_ptr  <= '0;

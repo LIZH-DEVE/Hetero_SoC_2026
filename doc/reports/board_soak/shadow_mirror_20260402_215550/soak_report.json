@@ -1,0 +1,87 @@
+{
+    "mode":  "sd cold-start soak",
+    "result":  "PASS",
+    "failure_reason":  "",
+    "assume_running":  false,
+    "cold_start":  true,
+    "boot_evidence_found":  true,
+    "boot_evidence_mode":  "control_data_after_manual_power_cycle",
+    "boot_evidence_lines":  [
+                                "fallback control evidence: 2026-04-02T13:56:37.3412379Z",
+                                "fallback data evidence: 2026-04-02T13:56:41.4906107Z"
+                            ],
+    "deploy_used":  false,
+    "target_ip":  "192.168.1.20",
+    "source_ip":  "192.168.1.11",
+    "control_port":  4662,
+    "duration_minutes_requested":  1,
+    "cycle_interval_seconds":  15,
+    "start_time":  "2026-04-02T21:55:50.8378869+08:00",
+    "end_time":  "2026-04-02T21:56:53.5402254+08:00",
+    "first_control_success_utc":  "2026-04-02T13:56:37.3412379Z",
+    "first_data_success_utc":  "2026-04-02T13:56:41.4906107Z",
+    "session_id":  "0x00000001",
+    "binding_id":  "0xc4ba0c4b",
+    "uart_log_path":  "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\board_uart_boot_115200_20260402_215550.txt",
+    "report_dir":  "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\doc\\reports\\board_soak\\shadow_mirror_20260402_215550",
+    "cycles_completed":  1,
+    "aes_probe_count":  1,
+    "sm4_probe_count":  1,
+    "acl_probe_count":  0,
+    "replay_probe_count":  0,
+    "hard_bad_uart_evidence":  [
+
+                               ],
+    "soft_uart_warnings":  [
+                               "Cold-start UART boot capture was empty; will require control/data fallback evidence.",
+                               "UART log file was not created: D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\board_uart_boot_115200_20260402_215550.txt"
+                           ],
+    "baseline_status":  {
+                            "binding_id":  3300527179,
+                            "session_id":  1,
+                            "authorized_mask":  3,
+                            "locked":  0,
+                            "rx_ctrl_ok":  2,
+                            "rx_data_ok":  0,
+                            "tx_ok":  2,
+                            "drop_invalid":  0,
+                            "drop_unauthorized":  0,
+                            "drop_replay":  0,
+                            "bind_fail":  0,
+                            "lock_events":  0,
+                            "crypto_timeout":  0,
+                            "crypto_fail":  0
+                        },
+    "final_status":  {
+                         "binding_id":  3300527179,
+                         "session_id":  1,
+                         "authorized_mask":  3,
+                         "locked":  0,
+                         "rx_ctrl_ok":  3,
+                         "rx_data_ok":  0,
+                         "tx_ok":  3,
+                         "drop_invalid":  0,
+                         "drop_unauthorized":  0,
+                         "drop_replay":  0,
+                         "bind_fail":  0,
+                         "lock_events":  0,
+                         "crypto_timeout":  0,
+                         "crypto_fail":  0
+                     },
+    "cycles":  [
+                   {
+                       "cycle":  1,
+                       "timestamp":  "2026-04-02T21:56:42.5203488+08:00",
+                       "aes_result":  "PASS",
+                       "sm4_result":  "PASS",
+                       "acl_delta":  null,
+                       "replay_delta":  null,
+                       "locked":  0,
+                       "authorized_mask":  3,
+                       "drop_replay":  0,
+                       "bind_fail":  0,
+                       "crypto_timeout":  0,
+                       "crypto_fail":  0
+                   }
+               ]
+}

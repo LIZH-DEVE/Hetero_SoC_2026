@@ -1,0 +1,93 @@
+﻿{
+    "generated_at":  "2026-04-02T15:13:29",
+    "output_dir":  "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\doc\\reports\\engineering_evidence\\shadow_mirror_20260402_151207",
+    "checkpoint_path":  "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\HCS_SOC\\HCS_SOC.runs\\impl_1\\udp_gateway_shadow_mirror_wrapper_postroute_physopt.dcp",
+    "skip_vivado":  false,
+    "vivado_bat":  "D:\\Xilinx\\Vivado\\2024.1\\bin\\vivado.bat",
+    "boot_bin_sha256":  "2A66539954DD8E8EEE9BC0689E4A970D7CA1D58A50998F8E0724B78ADCB3B68D",
+    "timing":  {
+                   "ReportPath":  "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\doc\\reports\\engineering_evidence\\shadow_mirror_20260402_151207\\fresh_reports\\udp_gateway_shadow_mirror_wrapper_timing_summary_postroute_physopted.rpt",
+                   "SetupFailingEndpoints":  0,
+                   "SetupWnsNs":  3.342,
+                   "SetupTnsNs":  0,
+                   "HoldFailingEndpoints":  0,
+                   "HoldWhsNs":  0.03,
+                   "HoldThsNs":  0,
+                   "TimingClean":  true
+               },
+    "power":  {
+                  "total_on_chip_power_w":  "1.877",
+                  "dynamic_power_w":  "1.728",
+                  "device_static_power_w":  "0.149",
+                  "confidence_level":  "Medium",
+                  "report_path":  "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\doc\\reports\\engineering_evidence\\shadow_mirror_20260402_151207\\fresh_reports\\udp_gateway_shadow_mirror_wrapper_power_routed.rpt"
+              },
+    "methodology":  {
+                        "violations_found":  0,
+                        "report_path":  "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\doc\\reports\\engineering_evidence\\shadow_mirror_20260402_151207\\fresh_reports\\udp_gateway_shadow_mirror_wrapper_methodology_drc_routed.rpt"
+                    },
+    "pblock":  {
+                   "count":  3,
+                   "summary_path":  "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\doc\\reports\\engineering_evidence\\shadow_mirror_20260402_151207\\fresh_reports\\udp_gateway_shadow_mirror_wrapper_pblock_summary.txt"
+               },
+    "acceptance":  {
+                       "latest_board_benchmark_dir":  "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\doc\\reports\\board_benchmarks\\shadow_mirror_20260401_191044",
+                       "latest_board_soak_dir":  "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\doc\\reports\\board_soak\\shadow_mirror_20260401_224117",
+                       "phase_audit_md":  "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\doc\\reports\\2026-04-01_project_phase_status_audit.md",
+                       "final_handoff_md":  "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\doc\\reports\\2026-03-31_phasec_shadow_mirror_final_handoff.md",
+                       "thesis_data_md":  "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\doc\\reports\\THESIS_DATA_TABLE.md"
+                   },
+    "artifacts":  {
+                      "raw_impl_reports_dir":  "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\doc\\reports\\engineering_evidence\\shadow_mirror_20260402_151207\\raw_impl_reports",
+                      "fresh_reports_dir":  "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\doc\\reports\\engineering_evidence\\shadow_mirror_20260402_151207\\fresh_reports",
+                      "release_artifacts_dir":  "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\doc\\reports\\engineering_evidence\\shadow_mirror_20260402_151207\\release_artifacts",
+                      "acceptance_reports_dir":  "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\doc\\reports\\engineering_evidence\\shadow_mirror_20260402_151207\\acceptance_reports",
+                      "manifest_json":  "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\doc\\reports\\engineering_evidence\\shadow_mirror_20260402_151207\\engineering_evidence_manifest.json",
+                      "summary_md":  "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\doc\\reports\\engineering_evidence\\shadow_mirror_20260402_151207\\engineering_evidence_summary.md"
+                  },
+    "copied_files":  {
+                         "raw_impl_reports":  [
+                                                  "runme.log",
+                                                  "udp_gateway_shadow_mirror_wrapper.bit",
+                                                  "udp_gateway_shadow_mirror_wrapper_bus_skew_postroute_physopted.rpt",
+                                                  "udp_gateway_shadow_mirror_wrapper_bus_skew_routed.rpt",
+                                                  "udp_gateway_shadow_mirror_wrapper_clock_utilization_routed.rpt",
+                                                  "udp_gateway_shadow_mirror_wrapper_control_sets_placed.rpt",
+                                                  "udp_gateway_shadow_mirror_wrapper_drc_routed.rpt",
+                                                  "udp_gateway_shadow_mirror_wrapper_io_placed.rpt",
+                                                  "udp_gateway_shadow_mirror_wrapper_methodology_drc_routed.rpt",
+                                                  "udp_gateway_shadow_mirror_wrapper_postroute_physopt.dcp",
+                                                  "udp_gateway_shadow_mirror_wrapper_power_routed.rpt",
+                                                  "udp_gateway_shadow_mirror_wrapper_route_status.rpt",
+                                                  "udp_gateway_shadow_mirror_wrapper_routed.dcp",
+                                                  "udp_gateway_shadow_mirror_wrapper_timing_summary_postroute_physopted.rpt",
+                                                  "udp_gateway_shadow_mirror_wrapper_timing_summary_routed.rpt",
+                                                  "udp_gateway_shadow_mirror_wrapper_utilization_placed.rpt"
+                                              ],
+                         "fresh_reports":  [
+                                               "udp_gateway_shadow_mirror_wrapper_cdc_routed.rpt",
+                                               "udp_gateway_shadow_mirror_wrapper_clock_interaction_routed.rpt",
+                                               "udp_gateway_shadow_mirror_wrapper_clock_utilization_routed.rpt",
+                                               "udp_gateway_shadow_mirror_wrapper_drc_routed.rpt",
+                                               "udp_gateway_shadow_mirror_wrapper_methodology_drc_routed.rpt",
+                                               "udp_gateway_shadow_mirror_wrapper_pblock_summary.txt",
+                                               "udp_gateway_shadow_mirror_wrapper_power_routed.rpt",
+                                               "udp_gateway_shadow_mirror_wrapper_route_status.rpt",
+                                               "udp_gateway_shadow_mirror_wrapper_timing_summary_postroute_physopted.rpt",
+                                               "udp_gateway_shadow_mirror_wrapper_utilization_hierarchical.rpt"
+                                           ],
+                         "release_artifacts":  [
+                                                   "ax7020_udp_gateway_shadow_mirror_app.elf",
+                                                   "BOOT.BIN",
+                                                   "bootgen_read.txt",
+                                                   "fsbl.elf",
+                                                   "readme.txt",
+                                                   "udp_gateway_shadow_mirror_wrapper.bit"
+                                               ],
+                         "acceptance_reports":  [
+                                                    "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\doc\\reports\\engineering_evidence\\shadow_mirror_20260402_151207\\acceptance_reports\\2026-03-31_phasec_shadow_mirror_final_handoff.md",
+                                                    "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\doc\\reports\\engineering_evidence\\shadow_mirror_20260402_151207\\acceptance_reports\\2026-04-01_project_phase_status_audit.md",
+                                                    "D:\\FPGAhanjia\\Hetero_SoC_2026_3\\Hetero_SoC_2026\\doc\\reports\\engineering_evidence\\shadow_mirror_20260402_151207\\acceptance_reports\\THESIS_DATA_TABLE.md"
+                                                ]
+                     }
+}

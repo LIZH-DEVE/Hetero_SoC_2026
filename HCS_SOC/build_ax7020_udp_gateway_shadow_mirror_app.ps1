@@ -11,18 +11,19 @@ $workspace = Split-Path -Parent $MyInvocation.MyCommand.Path
 $appSrcDir = Join-Path $workspace "ax7020_udp_gateway_shadow_mirror_app\src"
 $buildDir = Join-Path $workspace "ax7020_udp_gateway_shadow_mirror_app\build"
 $objDir = Join-Path $buildDir "obj"
-$gatewaySrcDir = Join-Path $workspace "vitis_2023_udp_gateway_ws_2\ax7020_udp_gateway_app\src"
+$legacyWorkspaceRoot = Join-Path $workspace "legacy\workspaces\vitis_2023_udp_gateway_ws_2"
+$gatewaySrcDir = Join-Path $legacyWorkspaceRoot "ax7020_udp_gateway_app\src"
 $driverSource = Join-Path $workspace "dma_mvp_ps_driver_ref.c"
 $driverHeader = Join-Path $workspace "dma_mvp_ps_driver_ref.h"
 $contractHeader = Join-Path $workspace "dma_hw_regs.h"
 $linkerScript = Join-Path $appSrcDir "lscript.ld"
-$defaultSpecsFile = Join-Path $workspace "vitis_2023_udp_gateway_ws_2\ax7020_udp_gateway_app\Debug\Xilinx.spec"
+$defaultSpecsFile = Join-Path $legacyWorkspaceRoot "ax7020_udp_gateway_app\Debug\Xilinx.spec"
 $defaultWorkspaceRoot = Join-Path $workspace "ax7020_udp_gateway_shadow_mirror_platform_xsct\workspace"
 $defaultPlatformName = "ax7020_udp_gateway_shadow_mirror_platform"
-$legacyGatewayBspDir = Join-Path $workspace "vitis_2023_udp_gateway_ws_2\ax7020_udp_gateway_platform\ps7_cortexa9_0\standalone_domain\bsp"
+$legacyGatewayBspDir = Join-Path $legacyWorkspaceRoot "ax7020_udp_gateway_platform\ps7_cortexa9_0\standalone_domain\bsp"
 $legacyGatewayBspProcessorRoot = Join-Path $legacyGatewayBspDir "ps7_cortexa9_0"
 $legacyGatewayLwipSrcDir = Join-Path $legacyGatewayBspProcessorRoot "libsrc\lwip213_v1_0\src"
-$legacyGatewayDomain = Join-Path $workspace "vitis_2023_udp_gateway_ws_2\ax7020_udp_gateway_platform\export\ax7020_udp_gateway_platform\sw\ax7020_udp_gateway_platform\standalone_domain"
+$legacyGatewayDomain = Join-Path $legacyWorkspaceRoot "ax7020_udp_gateway_platform\export\ax7020_udp_gateway_platform\sw\ax7020_udp_gateway_platform\standalone_domain"
 
 function Resolve-ShadowApiBspRoot {
     param(

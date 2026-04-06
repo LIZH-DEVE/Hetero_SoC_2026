@@ -27,9 +27,9 @@ module pbm_controller #(
     output logic                    o_drop_pulse
 );
     localparam DEPTH = 1 << (PBM_ADDR_WIDTH - 2);
+    localparam integer PBM_WORD_ADDR_WIDTH = PBM_ADDR_WIDTH - 2;
     localparam integer EFFECTIVE_HIGH_WATER_MARGIN =
         (HIGH_WATER_MARGIN >= (DEPTH - 16)) ? (DEPTH - 16) : HIGH_WATER_MARGIN;
-    logic [DATA_WIDTH-1:0] ram [0:DEPTH-1];
 
     typedef enum logic [1:0] {
         ALLOC_META,
@@ -44,6 +44,16 @@ module pbm_controller #(
     logic [PBM_ADDR_WIDTH-2:0] usage_calc;
     logic full;
     logic high_water;
+    logic                      pbm_wr_en;
+    logic [0:0]                pbm_wr_wea;
+    logic [PBM_WORD_ADDR_WIDTH-1:0] pbm_wr_addr;
+    (* DONT_TOUCH = "true", KEEP = "true" *) logic                      pbm_wr_cmd_q;
+    (* DONT_TOUCH = "true", KEEP = "true" *) logic [0:0]                pbm_wr_wea_q;
+    (* DONT_TOUCH = "true", KEEP = "true" *) logic [PBM_WORD_ADDR_WIDTH-1:0] pbm_wr_addr_q;
+    (* DONT_TOUCH = "true", KEEP = "true" *) logic [DATA_WIDTH-1:0]     pbm_wr_data_q;
+    logic                      pbm_rd_fire;
+    logic                      pbm_rd_pending;
+    logic [DATA_WIDTH-1:0]     pbm_rd_data;
 
     assign usage_calc = ptr_head_reserve - ptr_tail;
     assign full = (usage_calc >= (DEPTH - 16));
@@ -52,6 +62,77 @@ module pbm_controller #(
     assign o_rd_empty = (ptr_tail == ptr_head_commit);
     assign o_rollback_active = (state == ROLLBACK);
     assign o_high_water = high_water;
+    assign pbm_wr_en = i_wr_valid && o_wr_ready;
+    assign pbm_wr_wea = {pbm_wr_en};
+    assign pbm_wr_addr = (state == ALLOC_META) ? ptr_head_commit : ptr_head_reserve;
+    assign pbm_rd_fire = i_rd_en && !o_rd_empty;
+
+    // Isolate the BRAM write control from upstream async-reset state.
+    // REQP-1839 is triggered when ENBWREN is driven directly from logic whose
+    // fan-in includes async-reset registers in u_crypto_bridge/u_csr. Capture
+    // the write command through a local synchronous stage before driving XPM.
+    always_ff @(posedge clk) begin
+        if (!rst_n) begin
+            pbm_wr_cmd_q <= 1'b0;
+            pbm_wr_wea_q <= '0;
+            pbm_wr_addr_q <= '0;
+            pbm_wr_data_q <= '0;
+        end else begin
+            pbm_wr_cmd_q <= pbm_wr_en;
+            pbm_wr_wea_q <= {pbm_wr_en};
+            if (pbm_wr_en) begin
+                pbm_wr_addr_q <= pbm_wr_addr;
+                pbm_wr_data_q <= i_wr_data;
+            end
+        end
+    end
+
+    // Force the PBM payload store into true block RAM. Attribute-only inference
+    // left this array in LUTRAM during OOC synth, so the active path now uses an
+    // explicit simple dual-port memory primitive.
+    xpm_memory_sdpram #(
+        .ADDR_WIDTH_A(PBM_WORD_ADDR_WIDTH),
+        .ADDR_WIDTH_B(PBM_WORD_ADDR_WIDTH),
+        .AUTO_SLEEP_TIME(0),
+        .BYTE_WRITE_WIDTH_A(DATA_WIDTH),
+        .CASCADE_HEIGHT(0),
+        .CLOCKING_MODE("common_clock"),
+        .ECC_MODE("no_ecc"),
+        .MEMORY_INIT_FILE("none"),
+        .MEMORY_INIT_PARAM("0"),
+        .MEMORY_OPTIMIZATION("true"),
+        .MEMORY_PRIMITIVE("block"),
+        .MEMORY_SIZE(DEPTH * DATA_WIDTH),
+        .MESSAGE_CONTROL(0),
+        .READ_DATA_WIDTH_B(DATA_WIDTH),
+        .READ_LATENCY_B(1),
+        .READ_RESET_VALUE_B("0"),
+        .RST_MODE_A("SYNC"),
+        .RST_MODE_B("SYNC"),
+        .SIM_ASSERT_CHK(0),
+        .USE_EMBEDDED_CONSTRAINT(0),
+        .USE_MEM_INIT(0),
+        .WAKEUP_TIME("disable_sleep"),
+        .WRITE_DATA_WIDTH_A(DATA_WIDTH),
+        .WRITE_MODE_B("read_first")
+    ) u_pbm_mem (
+        .sleep(1'b0),
+        .clka(clk),
+        .ena(pbm_wr_cmd_q),
+        .wea(pbm_wr_wea_q),
+        .addra(pbm_wr_addr_q),
+        .dina(pbm_wr_data_q),
+        .injectsbiterra(1'b0),
+        .injectdbiterra(1'b0),
+        .clkb(clk),
+        .rstb(!rst_n),
+        .enb(pbm_rd_fire),
+        .regceb(1'b1),
+        .addrb(ptr_tail),
+        .doutb(pbm_rd_data),
+        .sbiterrb(),
+        .dbiterrb()
+    );
 
     // State/register update and pointer maintenance.
     // Keep PBM head state synchronous so BRAM write/read control pins are not
@@ -128,29 +209,21 @@ module pbm_controller #(
         endcase
     end
 
-    // Accept first beat already in ALLOC_META to avoid dropping one word per packet.
-    // RAM write logic does not use asynchronous reset to adhere to BRAM mapping guidelines.
-    always_ff @(posedge clk) begin
-        if (i_wr_valid && o_wr_ready) begin
-            if (state == ALLOC_META) begin
-                ram[ptr_head_commit] <= i_wr_data;
-            end else if (state == ALLOC_PBM) begin
-                ram[ptr_head_reserve] <= i_wr_data;
-            end
-        end
-    end
-
     always_ff @(posedge clk) begin
         if (!rst_n) begin
             ptr_tail <= '0;
             o_rd_valid <= 1'b0;
             o_rd_data <= '0;
+            pbm_rd_pending <= 1'b0;
         end else begin
-            o_rd_valid <= 1'b0;
-            if (i_rd_en && !o_rd_empty) begin
+            pbm_rd_pending <= pbm_rd_fire;
+            o_rd_valid <= pbm_rd_pending;
+            if (pbm_rd_pending) begin
+                o_rd_data <= pbm_rd_data;
+            end
+
+            if (pbm_rd_fire) begin
                 ptr_tail <= ptr_tail + 1'b1;
-                o_rd_valid <= 1'b1;
-                o_rd_data <= ram[ptr_tail];
             end
         end
     end

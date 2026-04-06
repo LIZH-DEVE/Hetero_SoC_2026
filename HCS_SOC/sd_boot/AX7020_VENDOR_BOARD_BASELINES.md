@@ -6,6 +6,17 @@ These baseline images are copied verbatim from the vendor course package under:
 
 They are the authoritative board bring-up baselines for this repository.
 
+## Fixed board-test order
+
+Always deploy and judge AX7020 board images in this exact order:
+
+1. `ax7020_vendor_ps_uart_baseline`
+2. `ax7020_repo_design1_uart_baseline`
+3. `ax7020_dma_raw_copy_smoke`
+4. `ax7020_dma_mvp_smoke_system`
+
+Do not skip levels. If one level fails, stop there and recover that level before trying the next image.
+
 ## Included images
 
 ### `ax7020_vendor_ps_hello_baseline`
@@ -47,6 +58,8 @@ Hello ALINX!
 Hello ALINX!
 Hello ALINX!
 ```
+
+This repeated UART output is the required pass gate for step 1 of the fixed board-test order.
 
 ## Important debugging rule
 

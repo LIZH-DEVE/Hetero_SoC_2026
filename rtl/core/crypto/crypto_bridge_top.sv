@@ -18,6 +18,10 @@ module crypto_bridge_top #(
     input  logic [31:0]  i_pbm_data,
     input  logic         i_pbm_empty,
     input  logic         i_pbm_valid,
+    input  logic         i_pkt_start,
+    input  logic         i_pkt_end,
+    input  logic         i_cbc_mode,
+    input  logic [127:0] i_iv_header,
     output logic         o_pbm_rd_en,
 
     output logic [31:0]  o_tx_data,
@@ -83,6 +87,9 @@ module crypto_bridge_top #(
     logic [127:0] key_lo_active;
     logic [127:0] key_hi_active;
     logic [127:0] debug_last_plaintext_q;
+    logic         bridge_pbm_fire;
+    logic         cbc_pkt_active;
+    logic [127:0] cbc_iv_header;
     
     logic [31:0]  context_fp_cache;
     logic [31:0]  context_fp_now;
@@ -110,8 +117,26 @@ module crypto_bridge_top #(
     assign key_active = aes256_reg ? {key_hi_active, key_lo_active} : {128'd0, key_lo_active};
     assign o_debug_last_plaintext = debug_last_plaintext_q;
     assign o_debug_key_lo_active = key_lo_active;
+    assign bridge_pbm_fire = i_pbm_valid && o_pbm_rd_en;
 
-    
+    // CBC mode is packet-atomic on the active shadow path.
+    // Readiness stage only: latch packet metadata here without introducing
+    // XOR/chaining data dependencies until the bridge becomes truly CBC-aware.
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            cbc_pkt_active <= 1'b0;
+            cbc_iv_header <= 128'd0;
+        end else if (bridge_pbm_fire) begin
+            if (i_pkt_start) begin
+                cbc_pkt_active <= i_cbc_mode;
+                cbc_iv_header <= i_iv_header;
+            end
+            if (i_pkt_end) begin
+                cbc_pkt_active <= 1'b0;
+            end
+        end
+    end
+
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             context_fp_cache <= 32'd0;
@@ -153,7 +178,7 @@ module crypto_bridge_top #(
     
     input_state_t input_state, input_next_state;
     
-    always_ff @(posedge clk or negedge rst_n) begin
+    always_ff @(posedge clk) begin
         if (!rst_n) begin
             input_state <= ST_IDLE;
             plaintext_reg <= 128'd0;
