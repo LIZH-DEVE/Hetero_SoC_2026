@@ -82,3 +82,8 @@ HCS_SOC/timing_triage/
 
 /HCS_SOC/legacy/workspaces/
 
+
+/HCS_SOC/ax7020_udp_gateway_shadow_mirror_app/build/
+/HCS_SOC/ax7020_udp_gateway_shadow_mirror_platform_xsct/
+/HCS_SOC/sd_boot/ax7020_udp_gateway_shadow_mirror/_bootgen_*/
+
