@@ -7,59 +7,65 @@ REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
 SHADOW_WRAPPER = REPO_ROOT / "rtl" / "top" / "dma_gateway_hybrid_board_wrapper.v"
 
 
-class TestShadowFastpathTxcapStorageContracts(unittest.TestCase):
+class TestShadowFastpathEgressContracts(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.text = SHADOW_WRAPPER.read_text(encoding="ascii")
 
-    def test_txcap_header_storage_is_decoupled_from_replay_header_buffer(self):
+    def test_fastpath_hit_retargets_into_zero_copy_egress_states(self):
         text = self.text
 
-        self.assertIn(
-            "reg  [31:0]           txcap_header_mem [0:FASTPATH_HDR_WORDS-1];",
-            text,
-        )
+        for token in (
+            "localparam [2:0] FASTPATH_ROUTE_EGRESS_REPLAY = 3'd4;",
+            "localparam [2:0] FASTPATH_ROUTE_EGRESS_DMA = 3'd5;",
+            "wire [31:0]           subsys_tx_axis_tdata;",
+            "wire                  subsys_tx_axis_tvalid;",
+            "wire                  subsys_tx_axis_tlast;",
+            "wire [3:0]            subsys_tx_axis_tkeep;",
+            "wire [31:0]           egress_tx_axis_tdata;",
+            "wire                  egress_tx_axis_tvalid;",
+            "wire                  egress_tx_axis_tlast;",
+            "wire [3:0]            egress_tx_axis_tkeep;",
+            "wire                  fastpath_egress_selected;",
+        ):
+            self.assertIn(token, text)
 
-        pop_match = re.search(
-            r"else if \(txcap_pop && \(txcap_count_q != 0\)\) begin(?P<body>.*?)\n\s*end\n\n\s*if \(acl_drop_pulse\) begin",
-            text,
-            re.S,
-        )
-        self.assertIsNotNone(pop_match, "TXCAP pop handling block missing")
-        pop_body = pop_match.group("body")
-        self.assertIn("txcap_next_rd_ptr", pop_body)
-        self.assertIn("txcap_header_mem[txcap_next_rd_ptr]", pop_body)
-        self.assertNotIn("fastpath_header_mem[txcap_rd_ptr_q + 9'd1]", pop_body)
+        self.assertIn("fastpath_route_state_q <= FASTPATH_ROUTE_EGRESS_REPLAY;", text)
+        self.assertNotIn("fastpath_route_state_q <= FASTPATH_ROUTE_TXCAP;", text)
+
+    def test_fastpath_hit_no_longer_copies_headers_into_txcap_mainline(self):
+        text = self.text
 
         hit_match = re.search(
-            r"\(\(\(aclf_tdata\[15:0\] - 16'd8\) >> 2\) \+ FASTPATH_HDR_WORDS <= FASTPATH_TXCAP_DEPTH\)\) begin(?P<body>.*?)fastpath_route_state_q <= FASTPATH_ROUTE_TXCAP;",
+            r"\(\(\(aclf_tdata\[15:0\] - 16'd8\) >> 2\) \+ FASTPATH_HDR_WORDS <= FASTPATH_TXCAP_DEPTH\)\) begin(?P<body>.*?)fastpath_route_state_q <= FASTPATH_ROUTE_EGRESS_REPLAY;",
             text,
             re.S,
         )
-        self.assertIsNotNone(hit_match, "FastPath TXCAP hit path missing")
+        self.assertIsNotNone(hit_match, "FastPath zero-copy egress hit block missing")
         hit_body = hit_match.group("body")
-        for token in (
-            "txcap_header_mem[0] <= fastpath_header_mem[0];",
-            "txcap_header_mem[1] <= fastpath_header_mem[1];",
-            "txcap_header_mem[2] <= fastpath_header_mem[2];",
-            "txcap_header_mem[3] <= fastpath_header_mem[3];",
-            "txcap_header_mem[4] <= fastpath_header_mem[4];",
-            "txcap_header_mem[5] <= fastpath_header_mem[5];",
-            "txcap_header_mem[6] <= fastpath_header_mem[6];",
-            "txcap_header_mem[7] <= fastpath_header_mem[7];",
-            "txcap_header_mem[8] <= fastpath_header_mem[8];",
-            "txcap_header_mem[9] <= fastpath_header_mem[9];",
-            "txcap_header_mem[10] <= aclf_tdata;",
-        ):
-            self.assertIn(token, hit_body)
 
-    def test_fastpath_status_explicitly_reports_txcap_storage_mode(self):
+        self.assertNotIn("txcap_header_mem[0] <=", hit_body)
+        self.assertNotIn("txcap_payload_wr_ptr_q <=", hit_body)
+        self.assertNotIn("txcap_count_q <=", hit_body)
+        self.assertIn("payload_words_q <=", hit_body)
+        self.assertIn("fastpath_last_hit_q <= 1'b1;", hit_body)
+        self.assertIn("fastpath_last_reason_q <= FASTPATH_REASON_HIT;", hit_body)
+
+    def test_zero_copy_egress_replay_and_payload_backpressure_contract(self):
         text = self.text
 
         for token in (
-            "localparam integer FASTPATH_STATUS_TXCAP_STORAGE_SHIFT = 6;",
-            "assign fastpath_status          = (32'd1 << FASTPATH_STATUS_TXCAP_STORAGE_SHIFT) |",
-            "{26'd0, fastpath_last_reason_q, fastpath_last_hit_q, ctrl_fastpath_en};",
+            "assign egress_tx_axis_tdata = (fastpath_route_state_q == FASTPATH_ROUTE_EGRESS_REPLAY) ?",
+            "assign egress_tx_axis_tvalid = (fastpath_route_state_q == FASTPATH_ROUTE_EGRESS_REPLAY) ? 1'b1 :",
+            "assign egress_tx_axis_tlast = (fastpath_route_state_q == FASTPATH_ROUTE_EGRESS_REPLAY) ?",
+            "assign egress_tx_axis_tkeep = 4'hF;",
+            "assign fastpath_egress_selected =",
+            "assign subsys_tx_axis_tready = fastpath_egress_selected ? 1'b0 : i_tx_axis_tready;",
+            "assign o_tx_axis_tdata = fastpath_egress_selected ? egress_tx_axis_tdata : subsys_tx_axis_tdata;",
+            "assign o_tx_axis_tvalid = fastpath_egress_selected ? egress_tx_axis_tvalid : subsys_tx_axis_tvalid;",
+            "assign o_tx_axis_tlast = fastpath_egress_selected ? egress_tx_axis_tlast : subsys_tx_axis_tlast;",
+            "assign o_tx_axis_tkeep = fastpath_egress_selected ? egress_tx_axis_tkeep : subsys_tx_axis_tkeep;",
+            "((fastpath_route_state_q == FASTPATH_ROUTE_EGRESS_DMA) ? i_tx_axis_tready : 1'b0)",
         ):
             self.assertIn(token, text)
 

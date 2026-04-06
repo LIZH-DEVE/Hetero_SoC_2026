@@ -129,7 +129,8 @@ module dma_gateway_hybrid_board_wrapper #(
     localparam [2:0] FASTPATH_ROUTE_HEADER = 3'd1;
     localparam [2:0] FASTPATH_ROUTE_REPLAY = 3'd2;
     localparam [2:0] FASTPATH_ROUTE_DMA = 3'd3;
-    localparam [2:0] FASTPATH_ROUTE_TXCAP = 3'd4;
+    localparam [2:0] FASTPATH_ROUTE_EGRESS_REPLAY = 3'd4;
+    localparam [2:0] FASTPATH_ROUTE_EGRESS_DMA = 3'd5;
     localparam [3:0] FASTPATH_REASON_IDLE = 4'd0;
     localparam [3:0] FASTPATH_REASON_HIT = 4'd1;
     localparam [3:0] FASTPATH_REASON_DISABLED = 4'd2;
@@ -170,10 +171,16 @@ module dma_gateway_hybrid_board_wrapper #(
     wire                  ctrl_irq_ack_unused;
     wire [31:0]           ctrl_irq_count_unused;
     wire [31:0]           ctrl_irq_timeout_unused;
-    wire [31:0]           fastpath_tx_axis_tdata;
-    wire                  fastpath_tx_axis_tvalid;
-    wire                  fastpath_tx_axis_tlast;
-    wire [3:0]            fastpath_tx_axis_tkeep;
+    wire [31:0]           subsys_tx_axis_tdata;
+    wire                  subsys_tx_axis_tvalid;
+    wire                  subsys_tx_axis_tlast;
+    wire [3:0]            subsys_tx_axis_tkeep;
+    wire                  subsys_tx_axis_tready;
+    wire [31:0]           egress_tx_axis_tdata;
+    wire                  egress_tx_axis_tvalid;
+    wire                  egress_tx_axis_tlast;
+    wire [3:0]            egress_tx_axis_tkeep;
+    wire                  fastpath_egress_selected;
 
     wire                  stage1_network_enable;
     wire                  stage1_ingress_inject_sel;
@@ -280,16 +287,24 @@ module dma_gateway_hybrid_board_wrapper #(
                                       {26'd0, fastpath_last_reason_q, fastpath_last_hit_q, ctrl_fastpath_en};
     assign fastpath_hit_count       = fastpath_hit_count_q;
     assign fastpath_fallback_count  = fastpath_fallback_count_q;
-    assign txcap_payload_wr_en      = (SHADOW_INJECT_ONLY != 0) &&
-                                      (fastpath_route_state_q == FASTPATH_ROUTE_TXCAP) &&
-                                      aclf_tvalid && aclf_tready &&
-                                      (txcap_count_q < FASTPATH_TXCAP_DEPTH);
+    assign txcap_payload_wr_en      = 1'b0;
     assign txcap_payload_wr_wea     = {txcap_payload_wr_en};
     assign txcap_payload_wr_addr    = txcap_payload_wr_ptr_q;
     assign txcap_next_rd_ptr        = txcap_rd_ptr_q + 9'd1;
     assign txcap_payload_rd_fire    = txcap_pop && (txcap_count_q > 10'd1) &&
                                       (txcap_next_rd_ptr >= FASTPATH_HDR_WORDS_ADDR);
     assign txcap_payload_rd_addr    = txcap_next_rd_ptr - FASTPATH_HDR_WORDS_ADDR;
+    assign egress_tx_axis_tdata = (fastpath_route_state_q == FASTPATH_ROUTE_EGRESS_REPLAY) ?
+                                  fastpath_header_mem[fastpath_replay_idx_q] : aclf_tdata;
+    assign egress_tx_axis_tvalid = (fastpath_route_state_q == FASTPATH_ROUTE_EGRESS_REPLAY) ? 1'b1 :
+                                   ((fastpath_route_state_q == FASTPATH_ROUTE_EGRESS_DMA) ? aclf_tvalid : 1'b0);
+    assign egress_tx_axis_tlast = (fastpath_route_state_q == FASTPATH_ROUTE_EGRESS_REPLAY) ?
+                                  (fastpath_frame_ended_in_header_q && ((fastpath_replay_idx_q + 4'd1) == fastpath_header_count_q)) :
+                                  ((fastpath_route_state_q == FASTPATH_ROUTE_EGRESS_DMA) ? aclf_tlast : 1'b0);
+    assign egress_tx_axis_tkeep = 4'hF;
+    assign fastpath_egress_selected = (fastpath_route_state_q == FASTPATH_ROUTE_EGRESS_REPLAY) ||
+                                      (fastpath_route_state_q == FASTPATH_ROUTE_EGRESS_DMA);
+    assign subsys_tx_axis_tready = fastpath_egress_selected ? 1'b0 : i_tx_axis_tready;
 
     // Force TXCAP payload storage into block RAM. Attribute-only inference kept
     // this payload store in distributed RAM, so use an explicit simple dual-port
@@ -637,7 +652,7 @@ module dma_gateway_hybrid_board_wrapper #(
     assign aclf_tready = (SHADOW_INJECT_ONLY == 0) ? classifier_s_tready :
                          (((fastpath_route_state_q == FASTPATH_ROUTE_IDLE) || (fastpath_route_state_q == FASTPATH_ROUTE_HEADER)) ? 1'b1 :
                           ((fastpath_route_state_q == FASTPATH_ROUTE_DMA) ? classifier_s_tready :
-                           ((fastpath_route_state_q == FASTPATH_ROUTE_TXCAP) ? (txcap_count_q < FASTPATH_TXCAP_DEPTH) : 1'b0)));
+                           ((fastpath_route_state_q == FASTPATH_ROUTE_EGRESS_DMA) ? i_tx_axis_tready : 1'b0)));
 
     // Keep TXCAP bookkeeping synchronous so BRAM enable/counting logic is not
     // driven from async-reset flops.
@@ -744,43 +759,17 @@ module dma_gateway_hybrid_board_wrapper #(
                                 fastpath_fallback_count_q <= fastpath_fallback_count_q + 32'd1;
                                 fastpath_route_state_q <= FASTPATH_ROUTE_REPLAY;
                                 fastpath_replay_idx_q <= 4'd0;
-                            end else if (txcap_count_q != 0) begin
-                                payload_words_q <= 16'd0;
-                                fastpath_last_payload_words_q <= 16'd0;
-                                fastpath_last_hit_q <= 1'b0;
-                                fastpath_last_reason_q <= FASTPATH_REASON_TX_BUSY;
-                                fastpath_fallback_count_q <= fastpath_fallback_count_q + 32'd1;
-                                fastpath_route_state_q <= FASTPATH_ROUTE_REPLAY;
-                                fastpath_replay_idx_q <= 4'd0;
                             end else if (((frame_dst_port_q == 16'd4660) || (frame_dst_port_q == 16'd4661)) &&
                                          (aclf_tdata[15:0] >= 16'd8) &&
                                          (((aclf_tdata[15:0] - 16'd8) & 16'h0003) == 16'd0) &&
                                          (((aclf_tdata[15:0] - 16'd8) & 16'h000F) == 16'd0) &&
                                          (((aclf_tdata[15:0] - 16'd8) >> 2) + FASTPATH_HDR_WORDS <= FASTPATH_TXCAP_DEPTH)) begin
-                                // Keep TXCAP header words independent from the live replay buffer.
-                                txcap_header_mem[0] <= fastpath_header_mem[0];
-                                txcap_header_mem[1] <= fastpath_header_mem[1];
-                                txcap_header_mem[2] <= fastpath_header_mem[2];
-                                txcap_header_mem[3] <= fastpath_header_mem[3];
-                                txcap_header_mem[4] <= fastpath_header_mem[4];
-                                txcap_header_mem[5] <= fastpath_header_mem[5];
-                                txcap_header_mem[6] <= fastpath_header_mem[6];
-                                txcap_header_mem[7] <= fastpath_header_mem[7];
-                                txcap_header_mem[8] <= fastpath_header_mem[8];
-                                txcap_header_mem[9] <= fastpath_header_mem[9];
-                                txcap_header_mem[10] <= aclf_tdata;
-                                txcap_payload_wr_ptr_q <= 9'd0;
-                                txcap_rd_ptr_q <= 9'd0;
-                                txcap_count_q <= 10'd11;
-                                txcap_read_data_q <= fastpath_header_mem[0];
-                                txcap_done_q <= 1'b0;
-                                txcap_overflow_q <= 1'b0;
-                                txcap_payload_rd_pending_q <= 1'b0;
                                 payload_words_q <= (aclf_tdata[15:0] - 16'd8) >> 2;
                                 fastpath_last_payload_words_q <= (aclf_tdata[15:0] - 16'd8) >> 2;
                                 fastpath_last_hit_q <= 1'b1;
                                 fastpath_last_reason_q <= FASTPATH_REASON_HIT;
-                                fastpath_route_state_q <= FASTPATH_ROUTE_TXCAP;
+                                fastpath_replay_idx_q <= 4'd0;
+                                fastpath_route_state_q <= FASTPATH_ROUTE_EGRESS_REPLAY;
                             end else begin
                                 payload_words_q <= 16'd0;
                                 fastpath_last_payload_words_q <= 16'd0;
@@ -821,24 +810,30 @@ module dma_gateway_hybrid_board_wrapper #(
                     end
                 end
 
-                FASTPATH_ROUTE_TXCAP: begin
-                    if (aclf_tvalid && aclf_tready) begin
-                        if (txcap_count_q < FASTPATH_TXCAP_DEPTH) begin
-                            txcap_payload_wr_ptr_q <= txcap_payload_wr_ptr_q + 9'd1;
-                            txcap_count_q <= txcap_count_q + 10'd1;
-                            if (aclf_tlast) begin
-                                txcap_done_q <= 1'b1;
+                FASTPATH_ROUTE_EGRESS_REPLAY: begin
+                    if (i_tx_axis_tready && egress_tx_axis_tvalid) begin
+                        if ((fastpath_replay_idx_q + 4'd1) == fastpath_header_count_q) begin
+                            fastpath_replay_idx_q <= 4'd0;
+                            if (fastpath_frame_ended_in_header_q) begin
                                 fastpath_hit_count_q <= fastpath_hit_count_q + 32'd1;
                                 fastpath_route_state_q <= FASTPATH_ROUTE_IDLE;
                                 fastpath_header_count_q <= 4'd0;
+                                fastpath_frame_ended_in_header_q <= 1'b0;
+                            end else begin
+                                fastpath_route_state_q <= FASTPATH_ROUTE_EGRESS_DMA;
                             end
                         end else begin
-                            txcap_overflow_q <= 1'b1;
-                            fastpath_last_hit_q <= 1'b0;
-                            fastpath_last_reason_q <= FASTPATH_REASON_FRAME_INVALID;
-                            fastpath_route_state_q <= FASTPATH_ROUTE_IDLE;
-                            fastpath_header_count_q <= 4'd0;
+                            fastpath_replay_idx_q <= fastpath_replay_idx_q + 4'd1;
                         end
+                    end
+                end
+
+                FASTPATH_ROUTE_EGRESS_DMA: begin
+                    if (aclf_tvalid && i_tx_axis_tready && aclf_tlast) begin
+                        fastpath_hit_count_q <= fastpath_hit_count_q + 32'd1;
+                        fastpath_route_state_q <= FASTPATH_ROUTE_IDLE;
+                        fastpath_header_count_q <= 4'd0;
+                        fastpath_frame_ended_in_header_q <= 1'b0;
                     end
                 end
 
@@ -872,10 +867,10 @@ module dma_gateway_hybrid_board_wrapper #(
     );
 
     assign dma_irq = 1'b0;
-    assign o_tx_axis_tdata = fastpath_tx_axis_tdata;
-    assign o_tx_axis_tvalid = fastpath_tx_axis_tvalid;
-    assign o_tx_axis_tlast = fastpath_tx_axis_tlast;
-    assign o_tx_axis_tkeep = fastpath_tx_axis_tkeep;
+    assign o_tx_axis_tdata = fastpath_egress_selected ? egress_tx_axis_tdata : subsys_tx_axis_tdata;
+    assign o_tx_axis_tvalid = fastpath_egress_selected ? egress_tx_axis_tvalid : subsys_tx_axis_tvalid;
+    assign o_tx_axis_tlast = fastpath_egress_selected ? egress_tx_axis_tlast : subsys_tx_axis_tlast;
+    assign o_tx_axis_tkeep = fastpath_egress_selected ? egress_tx_axis_tkeep : subsys_tx_axis_tkeep;
 
     crypto_dma_subsystem #(
         .ADDR_WIDTH(ADDR_WIDTH),
@@ -910,11 +905,11 @@ module dma_gateway_hybrid_board_wrapper #(
         .rx_wr_cbc_mode(classifier_dma_cbc_mode),
         .rx_wr_iv_header(classifier_dma_iv_header),
         .rx_wr_ready(classifier_dma_tready),
-        .tx_axis_tdata(fastpath_tx_axis_tdata),
-        .tx_axis_tvalid(fastpath_tx_axis_tvalid),
-        .tx_axis_tlast(fastpath_tx_axis_tlast),
-        .tx_axis_tkeep(fastpath_tx_axis_tkeep),
-        .tx_axis_tready(i_tx_axis_tready),
+        .tx_axis_tdata(subsys_tx_axis_tdata),
+        .tx_axis_tvalid(subsys_tx_axis_tvalid),
+        .tx_axis_tlast(subsys_tx_axis_tlast),
+        .tx_axis_tkeep(subsys_tx_axis_tkeep),
+        .tx_axis_tready(subsys_tx_axis_tready),
         .m_axis_awaddr(m_axi_dma_wr_awaddr),
         .m_axis_awlen(m_axi_dma_wr_awlen),
         .m_axis_awsize(m_axi_dma_wr_awsize),

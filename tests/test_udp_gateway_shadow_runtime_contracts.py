@@ -766,7 +766,7 @@ class TestUdpGatewayShadowRuntimeContracts(unittest.TestCase):
         ):
             self.assertIn(token, text)
 
-    def test_shadow_wrapper_routes_acl_output_into_txcap_fastpath_before_dma_fallback(self):
+    def test_shadow_wrapper_routes_acl_output_into_zero_copy_fastpath_egress_before_dma_fallback(self):
         text = self.shadow_wrapper
 
         for token in (
@@ -779,54 +779,33 @@ class TestUdpGatewayShadowRuntimeContracts(unittest.TestCase):
             ".i_fastpath_hit_count(fastpath_hit_count)",
             ".i_fastpath_fallback_count(fastpath_fallback_count)",
             "localparam integer FASTPATH_HDR_WORDS = 11;",
-            "localparam integer FASTPATH_TXCAP_DEPTH =",
             "localparam [2:0] FASTPATH_ROUTE_REPLAY = 3'd2;",
             "localparam [2:0] FASTPATH_ROUTE_DMA = 3'd3;",
-            "localparam [2:0] FASTPATH_ROUTE_TXCAP = 3'd4;",
+            "localparam [2:0] FASTPATH_ROUTE_EGRESS_REPLAY = 3'd4;",
+            "localparam [2:0] FASTPATH_ROUTE_EGRESS_DMA = 3'd5;",
             "frame_dst_port_q",
             "payload_words_q",
             "fastpath_hit_count_q",
             "fastpath_fallback_count_q",
-            "txcap_read_data_q",
-            "txcap_payload_rd_pending_q",
-            "u_txcap_payload_mem",
             "if (!ctrl_fastpath_en) begin",
-            "txcap_count_q < FASTPATH_TXCAP_DEPTH",
-            "((aclf_tdata[15:0] - 16'd8) >> 2) + FASTPATH_HDR_WORDS <= FASTPATH_TXCAP_DEPTH",
-            "xpm_memory_sdpram #(",
-            '.MEMORY_PRIMITIVE("block")',
-            ".ena(txcap_payload_wr_en)",
-            ".dina(aclf_tdata)",
-            ".enb(txcap_payload_rd_fire)",
-            ".doutb(txcap_payload_rd_data)",
-            "txcap_read_data_q <=",
+            "wire [31:0]           egress_tx_axis_tdata;",
+            "wire                  egress_tx_axis_tvalid;",
+            "wire                  egress_tx_axis_tlast;",
+            "wire [3:0]            egress_tx_axis_tkeep;",
+            "wire                  fastpath_egress_selected;",
             "classifier_dma_tdata",
             "classifier_dma_tvalid",
             "classifier_dma_tlast",
+            "assign egress_tx_axis_tdata = (fastpath_route_state_q == FASTPATH_ROUTE_EGRESS_REPLAY) ?",
+            "assign subsys_tx_axis_tready = fastpath_egress_selected ? 1'b0 : i_tx_axis_tready;",
+            "fastpath_route_state_q <= FASTPATH_ROUTE_EGRESS_REPLAY;",
+            "fastpath_route_state_q <= FASTPATH_ROUTE_EGRESS_DMA;",
         ):
             self.assertIn(token, text)
 
-        depth_match = re.search(
-            r"localparam integer FASTPATH_TXCAP_DEPTH = (\d+);",
-            text,
-        )
-        self.assertIsNotNone(depth_match, "FASTPATH_TXCAP_DEPTH definition missing")
-        self.assertGreaterEqual(
-            int(depth_match.group(1)),
-            379,
-            "FASTPATH_TXCAP_DEPTH must allow full-frame capture",
-        )
-        self.assertNotIn("localparam integer FASTPATH_TXCAP_DEPTH = 64;", text)
         self.assertNotIn("fastpath_pass_count", text)
-        self.assertNotIn("reg  [31:0]           txcap_data_mem", text)
-        self.assertNotIn(
-            "for (fastpath_copy_idx = 0; fastpath_copy_idx < (FASTPATH_HDR_WORDS - 1); fastpath_copy_idx = fastpath_copy_idx + 1) begin",
-            text,
-        )
-        self.assertNotIn(
-            "assign txcap_data               = (SHADOW_INJECT_ONLY != 0) ? ((txcap_count_q != 0) ? txcap_data_mem[txcap_rd_ptr_q] : 32'd0) : stage1_txcap_data;",
-            text,
-        )
+        self.assertNotIn("fastpath_route_state_q <= FASTPATH_ROUTE_TXCAP;", text)
+        self.assertNotIn("txcap_header_mem[0] <=", text)
 
     def test_shadow_wrapper_routes_acl_between_shadow_inject_and_classifier(self):
         text = self.shadow_wrapper

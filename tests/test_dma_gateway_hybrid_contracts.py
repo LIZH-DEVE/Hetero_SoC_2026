@@ -118,22 +118,36 @@ class TestDmaGatewayHybridContracts(unittest.TestCase):
             "output wire                    o_tx_axis_tlast,",
             "output wire [3:0]              o_tx_axis_tkeep,",
             "input  wire                    i_tx_axis_tready",
-            "wire [31:0]           fastpath_tx_axis_tdata;",
-            "wire                  fastpath_tx_axis_tvalid;",
-            "wire                  fastpath_tx_axis_tlast;",
-            "wire [3:0]            fastpath_tx_axis_tkeep;",
-            ".tx_axis_tdata(fastpath_tx_axis_tdata)",
-            ".tx_axis_tvalid(fastpath_tx_axis_tvalid)",
-            ".tx_axis_tlast(fastpath_tx_axis_tlast)",
-            ".tx_axis_tkeep(fastpath_tx_axis_tkeep)",
-            ".tx_axis_tready(i_tx_axis_tready)",
-            "assign o_tx_axis_tdata = fastpath_tx_axis_tdata;",
-            "assign o_tx_axis_tvalid = fastpath_tx_axis_tvalid;",
-            "assign o_tx_axis_tlast = fastpath_tx_axis_tlast;",
-            "assign o_tx_axis_tkeep = fastpath_tx_axis_tkeep;",
+            "wire [31:0]           subsys_tx_axis_tdata;",
+            "wire                  subsys_tx_axis_tvalid;",
+            "wire                  subsys_tx_axis_tlast;",
+            "wire [3:0]            subsys_tx_axis_tkeep;",
+            "wire                  subsys_tx_axis_tready;",
+            ".tx_axis_tdata(subsys_tx_axis_tdata)",
+            ".tx_axis_tvalid(subsys_tx_axis_tvalid)",
+            ".tx_axis_tlast(subsys_tx_axis_tlast)",
+            ".tx_axis_tkeep(subsys_tx_axis_tkeep)",
+            ".tx_axis_tready(subsys_tx_axis_tready)",
         ):
             self.assertIn(token, text)
         self.assertNotIn("dma_raw_copy_subsystem", text)
+
+    def test_hybrid_wrapper_zero_copy_fastpath_muxes_wrapper_egress_over_subsystem_tx(self):
+        text = WRAPPER_SV.read_text(encoding="ascii")
+
+        for token in (
+            "wire [31:0]           egress_tx_axis_tdata;",
+            "wire                  egress_tx_axis_tvalid;",
+            "wire                  egress_tx_axis_tlast;",
+            "wire [3:0]            egress_tx_axis_tkeep;",
+            "wire                  fastpath_egress_selected;",
+            "assign subsys_tx_axis_tready = fastpath_egress_selected ? 1'b0 : i_tx_axis_tready;",
+            "assign o_tx_axis_tdata = fastpath_egress_selected ? egress_tx_axis_tdata : subsys_tx_axis_tdata;",
+            "assign o_tx_axis_tvalid = fastpath_egress_selected ? egress_tx_axis_tvalid : subsys_tx_axis_tvalid;",
+            "assign o_tx_axis_tlast = fastpath_egress_selected ? egress_tx_axis_tlast : subsys_tx_axis_tlast;",
+            "assign o_tx_axis_tkeep = fastpath_egress_selected ? egress_tx_axis_tkeep : subsys_tx_axis_tkeep;",
+        ):
+            self.assertIn(token, text)
 
     def test_export_chain_clones_design1_into_hybrid_wrapper_with_dual_windows(self):
         tcl = EXPORT_TCL.read_text(encoding="ascii")
