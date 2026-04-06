@@ -1,0 +1,15 @@
+LIVE_CTRL PASS msg_type=6 session=0x0000000E
+shadow-main: xemacif_input rx_packets=1 batches=133 total=133
+shadow-main: netif_input pkt=134 dst_port=4662 len=68
+LIVE_CTRL PASS msg_type=6 session=0x0000000E
+shadow-main: xemacif_input rx_packets=1 batches=134 total=134
+shadow-main: xemacif_input rx_packets=1 batches=135 total=135
+shadow-main: xemacif_input rx_packets=1 batches=136 total=136
+shadow-main: xemacif_input rx_packets=1 batches=137 total=137
+shadow-main: xemacif_input rx_packets=1 batches=138 total=138
+shadow-main: xemacif_input rx_packets=1 batches=139 total=139
+shadow-main: xemacif_input rx_packets=1 batches=140 total=140
+shadow-main: xemacif_input rx_packets=1 batches=141 total=141
+shadow-main: xemacif_input rx_packets=1 batches=142 total=142
+shadow-main: xemacif_input rx_packets=1 batches=143 total=143
+shadow-main: xemacif_input rx_packets=1 batches=144 total=144

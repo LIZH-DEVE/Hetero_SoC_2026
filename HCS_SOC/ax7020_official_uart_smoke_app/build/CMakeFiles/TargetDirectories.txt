@@ -1,3 +1,0 @@
-D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/ax7020_official_uart_smoke_app/build/CMakeFiles/ax7020_official_uart_smoke_app.elf.dir
-D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/ax7020_official_uart_smoke_app/build/CMakeFiles/edit_cache.dir
-D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/ax7020_official_uart_smoke_app/build/CMakeFiles/rebuild_cache.dir

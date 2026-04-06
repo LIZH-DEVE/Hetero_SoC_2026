@@ -1,0 +1,7 @@
+the_ROM_image:
+{
+  // Stage 1: fresh FSBL from the repo design_1 baseline
+  [bootloader] fsbl.elf
+  // Stage 2: raw-copy smoke app ELF (no bitstream diagnostic image)
+  ax7020_dma_raw_copy_smoke_app.elf
+}

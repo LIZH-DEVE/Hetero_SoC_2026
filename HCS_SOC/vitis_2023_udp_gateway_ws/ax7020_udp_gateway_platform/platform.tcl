@@ -1,1 +1,0 @@
-platform generate -domains 

@@ -1,0 +1,17 @@
+DMA raw-copy MVP image
+  contract_ver = 2
+  csr_base     = 0x40000000
+  ring_base    = 0x0010C0A0
+  ring_size    = 4
+  len          = 64
+MVP_STAGE RING_FILL_QUIESCED
+  submit rc[0]=0 sw_tail=1
+  submit rc[1]=0 sw_tail=2
+  submit rc[2]=0 sw_tail=3
+MVP_STAGE RING_FULL_CHECK submit rc[3]=-5 sw_tail=3 hw_head=0 free_slots=0
+MVP_STAGE RING_FULL_EXPECT submit rc[3]=-5
+MVP_STAGE RING_RELEASE
+MVP_DESC[0] done csw=0x40000000 actual_len=0
+MVP_DESC[0] actual_len mismatch
+MVP ring-full phase failed rc=-30
+DMA raw-copy MVP FAIL

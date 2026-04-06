@@ -1,0 +1,1 @@
+--timescale "1ns/1ps" -L "work" "work.tb_dma_raw_copy_subsystem" -s "tb_dma_raw_copy_subsystem_snapshot" 

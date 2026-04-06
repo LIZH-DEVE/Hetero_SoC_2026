@@ -1,0 +1,20 @@
+Vivado Simulator v2024.1
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved.
+Copyright 2022-2024 Advanced Micro Devices, Inc. All Rights Reserved.
+Running: D:/Xilinx/Vivado/2024.1/bin/unwrapped/win64.o/xelab.exe --timescale 1ns/1ps --debug typical -mt off tb_dma_raw_copy_subsystem -s tb_dma_raw_copy_subsystem_sim 
+Turned off multi-threading.
+Starting static elaboration
+Pass Through NonSizing Optimizer
+Completed static elaboration
+Starting simulation data flow analysis
+Completed simulation data flow analysis
+Time Resolution for simulation is 1ps
+Compiling package work.dma_csr_pkg
+Compiling module work.axil_csr
+Compiling module work.dma_desc_fetcher
+Compiling module work.axis_packet_fifo_bram_default
+Compiling module work.dma_axis_fifo_wrapper(FIFO_DEPTH...
+Compiling module work.dma_raw_copy_engine(FIFO_DEPTH=3...
+Compiling module work.dma_raw_copy_subsystem(FIFO_DEPT...
+Compiling module work.tb_dma_raw_copy_subsystem
+Built simulation snapshot tb_dma_raw_copy_subsystem_sim

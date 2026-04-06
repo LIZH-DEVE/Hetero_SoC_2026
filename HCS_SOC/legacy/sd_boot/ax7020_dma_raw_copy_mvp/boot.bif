@@ -1,0 +1,6 @@
+the_ROM_image:
+{
+  [bootloader] fsbl.elf
+  dma_raw_copy_mvp.bit
+  ax7020_dma_raw_copy_mvp_app.elf
+}

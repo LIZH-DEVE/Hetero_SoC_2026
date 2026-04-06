@@ -1,0 +1,161 @@
+UDP gateway shadow mirror image
+
+
+----- AX7020 UDP Crypto Gateway -----
+UDP dst port 4660 = AES-128 ECB, 4661 = SM4, 4662 = control, 16-byte aligned payload only
+Packets are queued in udp_recv() and processed asynchronously in main loop
+CRYPTO_BASE_ADDR = 0x43C00000
+Start PHY autonegotiation 
+Waiting for PHY to complete autonegotiation.
+autonegotiation complete 
+link speed for phy address 1: 1000
+shadow-main: netif wrapped flags=0x0E input=0x0010590C
+Board IP: 192.168.1.20
+Netmask : 255.255.255.0
+Gateway : 192.168.1.1
+udp_crypto_gateway: custom PL clock/reset path already prepared
+
+===== SLCR PL Diagnostics =====
+IO_PLL_CTRL     (0xF8000108) = 0x0001E008
+IO_PLL_STATUS   (0xF800010C) = 0x0000003F
+IO_PLL_CFG      (0xF8000118) = 0x001452C0
+GEM0_RCLK_CTRL  (0xF8000138) = 0x00000001
+GEM0_CLK_CTRL   (0xF8000140) = 0x00100801
+TRACE_CLK_CTRL  (0xF8000168) = 0x00000501
+FPGA0_CLK_CTRL  (0xF8000170) = 0x00400500
+FPGA_CLK621     (0xF80001C4) = 0x00000001
+FPGA_RST_CTRL   (0xF8000240) = 0x00000000
+LVL_SHIFTERS_EN (0xF8000900) = 0x0000000F
+DEVCFG_STATUS   (0xF8007014) = 0x40000F30
+  PCFG_DONE = 0
+
+===== Active MMIO Bases =====
+CRYPTO_BASE_ADDR  = 0x43C00000
+WRAPPER_BASE_ADDR = 0x40000000 (fallback)
+
+===== Crypto MMIO Raw Dump (0x43C00000) =====
+  [0x43C00000] = 0x00000000
+  [0x43C00004] = 0x00000000
+  [0x43C00008] = 0xACE00403
+  [0x43C0000C] = 0x00000000
+  [0x43C00010] = 0x00000000
+  [0x43C00014] = 0x00000000
+  [0x43C00018] = 0x00000000
+  [0x43C0001C] = 0x00000000
+  [0x43C00020] = 0x00000000
+  [0x43C00024] = 0x00000000
+  [0x43C00028] = 0x00000000
+  [0x43C0002C] = 0x00000000
+  [0x43C00030] = 0x00000000
+  [0x43C00034] = 0x00000000
+  [0x43C00038] = 0x00000000
+  [0x43C0003C] = 0x00000000
+
+===== Wrapper CSR Probe (0x40000000) =====
+  [0x40000000] = 0x00000000
+  [0x40000004] = 0x00000000
+  [0x40000008] = 0x00000000
+  [0x4000000C] = 0x00000000
+  [0x40000020] = 0x00000000
+  [0x40000024] = 0x00000000
+  [0x40000028] = 0x00000000
+  [0x40000034] = 0x00000000
+  [0x40000048] = 0x00000000
+  [0x40000050] = 0x00000000
+  [0x40000054] = 0x00000000
+  [0x40000058] = 0x00000000
+  [0x4000005C] = 0x00000000
+  [0x40000090] = 0x00000007
+  [0x40000094] = 0xC0A80114
+  [0x40000098] = 0x35000120
+  [0x4000009C] = 0x0000020A
+  [0x400000A0] = 0x00000001
+  [0x400000A4] = 0x00000000
+  [0x400000A8] = 0x00000000
+  [0x400000AC] = 0x00000001
+  [0x400000B0] = 0x00000000
+  [0x400000B4] = 0x00000000
+  [0x400000B8] = 0x00000000
+  [0x400000BC] = 0x00000007
+  [0x400000C0] = 0xC0A80114
+  [0x400000C4] = 0x35000120
+  [0x400000C8] = 0x0000020A
+===== End Register Dump =====
+
+udp_crypto_gateway: REG_STATUS initial=0xACE00403
+udp_crypto_gateway: udp_bind AES ok pcb=0x00220200 local_port=4660
+udp_crypto_gateway: udp_bind SM4 ok pcb=0x002201C0 local_port=4661
+udp_crypto_gateway: udp_bind CTRL ok pcb=0x00220180 local_port=4662
+UDP crypto gateway started @ ports 4660(AES) 4661(SM4) 4662(CTRL)
+xemacpsif_input: pkt=257698039814 ethertype=0x001E len=5275720
+xemacpsif_input: dispatch pkt=2054 ethertype=0x001E err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=1 total=1
+xemacpsif_input: pkt=257698039814 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2054 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=2 total=2
+xemacpsif_input: pkt=257698039814 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2054 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=3 total=3
+xemacpsif_input: pkt=257698039814 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2054 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=4 total=4
+xemacpsif_input: pkt=1249835485184 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=5 total=5
+xemacpsif_input: pkt=356482287616 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=6 total=6
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=7 total=7
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=8 total=8
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=9 total=9
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=10 total=10
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=11 total=11
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=12 total=12
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=13 total=13
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=14 total=14
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=15 total=15
+xemacpsif_input: pkt=257698039814 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2054 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=16 total=16
+xemacpsif_input: pkt=356482287616 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=17 total=17
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=18 total=18
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=19 total=19
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=20 total=20
+xemacpsif_input: pkt=1249835485184 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=21 total=21
+xemacpsif_input: pkt=356482287616 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=22 total=22
+xemacpsif_input: pkt=1249835485184 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=23 total=23
+xemacpsif_input: pkt=1043677054976 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=24 total=24

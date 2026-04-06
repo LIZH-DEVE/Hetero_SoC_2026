@@ -1,0 +1,7 @@
+the_ROM_image:
+{
+  // Stage 1: fresh FSBL from the dedicated raw-copy XSA
+  [bootloader] fsbl.elf
+  // Stage 2: repo design_1 UART baseline application ELF (no bitstream diagnostic image)
+  ax7020_repo_design1_uart_baseline_app.elf
+}

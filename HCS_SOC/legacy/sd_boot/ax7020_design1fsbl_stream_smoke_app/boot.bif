@@ -1,0 +1,6 @@
+the_ROM_image:
+{
+  [bootloader] D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/sd_boot/ax7020_design1fsbl_stream_smoke_app/fsbl.elf
+  D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/sd_boot/ax7020_design1fsbl_stream_smoke_app/stream_smoke_dma_wrapper.bit
+  D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/sd_boot/ax7020_design1fsbl_stream_smoke_app/ax7020_dma_raw_copy_stream_smoke_app.elf
+}

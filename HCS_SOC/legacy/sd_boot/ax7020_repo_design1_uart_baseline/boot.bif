@@ -1,0 +1,6 @@
+the_ROM_image:
+{
+  [bootloader] D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/repo_design1_uart_baseline_xsct/workspace/ax7020_repo_design1_uart_platform/zynq_fsbl/fsbl.elf
+  D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/repo_design1_uart_baseline_xsct/xsa_extract/design_1_wrapper.bit
+  D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/ax7020_repo_design1_uart_baseline_app/build/ax7020_repo_design1_uart_baseline_app.elf
+}

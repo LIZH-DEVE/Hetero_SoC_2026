@@ -1,0 +1,24 @@
+DMA raw-copy MVP image
+  contract_ver = 2
+  csr_base     = 0x40000000
+  ring_base    = 0x0010C0A0
+  ring_size    = 4
+  len          = 64
+MVP_STAGE RING_FILL_QUIESCED
+  submit rc[0]=0 sw_tail=1
+  submit rc[1]=0 sw_tail=2
+  submit rc[2]=0 sw_tail=3
+MVP_STAGE RING_FULL_CHECK submit rc[3]=-5 sw_tail=3 hw_head=0 free_slots=0
+MVP_STAGE RING_FULL_EXPECT submit rc[3]=-5
+MVP_STAGE RING_RELEASE
+MVP_DESC[0] done csw=0x40000000 actual_len=64
+MVP_DESC[1] done csw=0x40000000 actual_len=64
+MVP_DESC[2] done csw=0x40000000 actual_len=64
+MVP_STAGE RING_DRAINED hw_head=3 sw_tail=3 free_slots=3
+MVP_IRQ_CONFIG count=2 timeout=64
+MVP_IRQ_COUNT status=0x00000001 rc=1
+MVP_DESC[0] done csw=0x40000000 actual_len=64
+MVP_DESC[1] done csw=0x40000000 actual_len=64
+MVP_IRQ_TIMEOUT status=0x00000001 rc=1
+MVP_DESC[0] done csw=0x40000000 actual_len=64
+DMA raw-copy MVP PASS

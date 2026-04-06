@@ -1,0 +1,92 @@
+{
+    "versionMajor": "0",
+    "versionMinor": "0",
+    "usesPR": "false",
+    "platformState": "pre_synth",
+    "topModuleName": "design_1_wrapper",
+    "acceleratorBinaryFormat": "xclbin2",
+    "acceleratorBinaryContent": "bitstream",
+    "validAcceleratorBinaryContentValues": "dcp,bitstream",
+    "dcpFunctionStripped": "false",
+    "dcpEncrypted": "false",
+    "defaultOutputType": "hw_export",
+    "designIntent": {
+        "dataCenter": {
+            "value": "false",
+            "explicit": "false"
+        },
+        "embedded": {
+            "value": "false",
+            "explicit": "false"
+        },
+        "externalHost": {
+            "value": "false",
+            "explicit": "false"
+        },
+        "serverManaged": {
+            "value": "false",
+            "explicit": "false"
+        }
+    },
+    "devices": [
+        {
+            "name": "fpga0",
+            "type": "8",
+            "fpgaPart": "zynq:xc7z020:clg400:-2",
+            "part": {
+                "name": "xc7z020clg400-2",
+                "architecture": "zynq",
+                "device": "xc7z020",
+                "package": "clg400",
+                "speedGrade": "-2"
+            },
+            "numSLRs": "1",
+            "core": {
+                "name": "OCL_REGION_0",
+                "type": "clc_region",
+                "numComputeUnits": "60",
+                "availableResources": {
+                    "bramCount": "140",
+                    "dspCount": "220",
+                    "lutCount": "53200",
+                    "registerCount": "106400"
+                }
+            }
+        }
+    ],
+    "files": [
+        {
+            "name": "design_1_wrapper.bit",
+            "type": "FULL_BIT"
+        }
+    ],
+    "vendor": "xilinx",
+    "description": "Vivado generated Hardware Platform",
+    "uniqueName": "xilinx:::0.0",
+    "fpgaPart": "zynq",
+    "fpgaDevice": "xc7z020",
+    "unifiedPlatform": "true",
+    "expandablePlatform": "false",
+    "hardware": "true",
+    "softwareEmulation": "true",
+    "hardwareEmulation": "false",
+    "hardwareEmuPlatform": "false",
+    "usesNIFD": "false",
+    "generatedName": "Vivado",
+    "generatedVersion": "2023.1",
+    "generatedChangeList": "3865809",
+    "generatedIpChangeList": "3864474",
+    "generatedSharedDataChangeList": "3865790",
+    "generatedTimestamp": "Tue Oct 24 15:12:09 2023",
+    "idCode": "03727093",
+    "designIDs": {
+        "designID": "2181994779"
+    },
+    "resources": [
+        {
+            "type": "REG",
+            "count": "106400"
+        }
+    ]
+}
+

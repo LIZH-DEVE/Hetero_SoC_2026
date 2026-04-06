@@ -1,9 +1,0 @@
-# ninja log v5
-10	251	7955889423812091	CMakeFiles/gem0_probe_app.elf.dir/d073bc06a3c79e333074dd5b4927fd68/HCS_SOC/platform/ps7_cortexa9_0/standalone_ps7_cortexa9_0/bsp/libsrc/emacps/src/xemacps_bdring.c.obj	ab4ca31d454603dd
-18	253	7955889423792100	CMakeFiles/gem0_probe_app.elf.dir/d073bc06a3c79e333074dd5b4927fd68/HCS_SOC/platform/ps7_cortexa9_0/standalone_ps7_cortexa9_0/bsp/libsrc/emacps/src/xemacps_sinit.c.obj	32f2dd212184e99b
-16	254	7955889423802924	CMakeFiles/gem0_probe_app.elf.dir/d073bc06a3c79e333074dd5b4927fd68/HCS_SOC/platform/ps7_cortexa9_0/standalone_ps7_cortexa9_0/bsp/libsrc/emacps/src/xemacps_hw.c.obj	ca24f399a7a09dc
-14	254	7955889423802924	CMakeFiles/gem0_probe_app.elf.dir/d073bc06a3c79e333074dd5b4927fd68/HCS_SOC/platform/ps7_cortexa9_0/standalone_ps7_cortexa9_0/bsp/libsrc/emacps/src/xemacps_g.c.obj	45aef37bdbd11368
-8	255	7955889423832087	CMakeFiles/gem0_probe_app.elf.dir/d073bc06a3c79e333074dd5b4927fd68/HCS_SOC/platform/ps7_cortexa9_0/standalone_ps7_cortexa9_0/bsp/libsrc/emacps/src/xemacps.c.obj	4fe37d78a58883ed
-12	255	7955889423852088	CMakeFiles/gem0_probe_app.elf.dir/d073bc06a3c79e333074dd5b4927fd68/HCS_SOC/platform/ps7_cortexa9_0/standalone_ps7_cortexa9_0/bsp/libsrc/emacps/src/xemacps_control.c.obj	27f64e5f51638f5b
-5	256	7955889423842088	CMakeFiles/gem0_probe_app.elf.dir/main.c.obj	7672c4ca9afbd640
-256	360	7955889425611454	gem0_probe_app.elf	468a48a304d3e015

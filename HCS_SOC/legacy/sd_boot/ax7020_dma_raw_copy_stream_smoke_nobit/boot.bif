@@ -1,0 +1,7 @@
+the_ROM_image:
+{
+  // Stage 1: fresh FSBL from the dedicated stream-smoke XSA
+  [bootloader] fsbl.elf
+  // Stage 2: stream-smoke application ELF (no bitstream diagnostic image)
+  ax7020_dma_raw_copy_stream_smoke_app.elf
+}

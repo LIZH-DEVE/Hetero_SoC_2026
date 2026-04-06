@@ -1,3 +1,0 @@
-D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/ax7020_crypto_direct_write_smoke_official_app/build/write_key_10/CMakeFiles/ax7020_crypto_direct_write_smoke_official_app.elf.dir
-D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/ax7020_crypto_direct_write_smoke_official_app/build/write_key_10/CMakeFiles/edit_cache.dir
-D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/HCS_SOC/ax7020_crypto_direct_write_smoke_official_app/build/write_key_10/CMakeFiles/rebuild_cache.dir

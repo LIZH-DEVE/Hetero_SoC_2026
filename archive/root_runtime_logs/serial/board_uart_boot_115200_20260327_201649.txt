@@ -1,0 +1,32 @@
+FSBL_DIAG BEFORE_POST_CONFIG
+FSBL_DIAG AFTER_POST_CONFIG
+FSBL_DIAG BEFORE_HANDOFF
+DMA stream smoke image
+  contract_ver = 2
+  dma_base     = 0x40000000
+  dummy_base   = 0x40001000
+  ring_base    = 0x001080A0
+  ring_size    = 2
+  word_granularity = 4
+STREAM_STAGE EXACT_FIT PREP capacity=1024 packet_len=1024
+  submit rc=0 sw_tail=1
+  csw=0x40000000 rc=0 status=OK
+  actual_len=1024
+  done=1 err=0 sts=OK
+STREAM_STAGE EXACT_FIT PASS actual_len=1024
+  done=1 err=0 sts=OK
+STREAM_STAGE SHORT PREP capacity=1024 packet_len=64
+  submit rc=0 sw_tail=1
+  csw=0x40000000 rc=0 status=OK
+  actual_len=64
+  done=1 err=0 sts=OK
+STREAM_STAGE SHORT PASS actual_len=64
+  done=1 err=0 sts=OK
+STREAM_STAGE OVERFLOW PREP capacity=64 packet_len=128
+  submit rc=0 sw_tail=1
+  csw=0x60000002 rc=0 status=OVERFLOW_OR_MISSING_TLAST
+  actual_len=64
+  done=1 err=1 sts=OVERFLOW_OR_MISSING_TLAST
+STREAM_STAGE OVERFLOW PASS actual_len=64
+  done=1 err=1 sts=OVERFLOW_OR_MISSING_TLAST
+DMA stream smoke PASS

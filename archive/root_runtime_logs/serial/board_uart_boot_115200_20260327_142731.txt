@@ -1,0 +1,7 @@
+DMA stream smoke image
+  contract_ver = 2
+  dma_base     = 0x40000000
+  dummy_base   = 0x40001000
+  ring_base    = 0x001080A0
+  ring_size    = 2
+  word_granularity = 4

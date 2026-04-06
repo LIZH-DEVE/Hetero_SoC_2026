@@ -1,0 +1,14 @@
+AX7020 DMA gateway hybrid perf proof image
+Stage 2 SG proof contract: single-launch, 1000 repeats, last-descriptor polling
+PROOF_CONFIG repeats=1000 ring_entries=2048 usable_desc=2047
+PROOF_ADDR ring=0x00274800 src=0x00274220 dst0=0x00104F20
+PROOF_ROW algo=aes length=16 repeats=1000 sw_us=5289 hw_us=4551 batch_descriptor_count=1000 single_launch_used=1 doorbell_count=1 last_descriptor_poll_count=16325 actual_len_mismatch_count=0 cipher_mismatch_count=0 descriptor_error_count=0 completion_timeout_count=0
+PROOF_ROW algo=aes length=32 repeats=1000 sw_us=9738 hw_us=6242 batch_descriptor_count=1000 single_launch_used=1 doorbell_count=1 last_descriptor_poll_count=22191 actual_len_mismatch_count=0 cipher_mismatch_count=0 descriptor_error_count=0 completion_timeout_count=0
+PROOF_MISMATCH_DIAG algo=aes length=128 sample_len=16
+PROOF_MISMATCH_SRC000102030405060708090A0B0C0D0E0F
+PROOF_MISMATCH_EXP50FE67CC996D32B6DA0937E99BAFEC60
+PROOF_MISMATCH_ACTA5A5A5A5A5A5A5A5A5A5A5A5A5A5A5A5
+PROOF_HW_BLOCK707172737475767778797A7B7C7D7E7F
+PROOF_HW_KEY2B7E151628AED2A6ABF7158809CF4F3C
+PROOF_ROW algo=aes length=128 repeats=1000 sw_us=36480 hw_us=16682 batch_descriptor_count=1000 single_launch_used=1 doorbell_count=1 last_descriptor_poll_count=58335 actual_len_mismatch_count=0 cipher_mismatch_count=8 descriptor_error_count=0 completion_timeout_count=0
+PROOF_FAIL algo=aes length=128 stage=hw rc=-5

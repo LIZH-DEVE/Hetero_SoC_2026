@@ -1,0 +1,10 @@
+UDP gateway backend smoke image
+  ctrl_base    = 0x40000000
+  dma_base     = 0x40001000
+  drop_wrong   = 0xCC
+  drop_unalign = 0xD0
+DIRECT_BACKEND START
+AX7020 DIRECT CRYPTO WRITE SMOKE
+TEST_CASE=aes_block_smoke_enc
+CRYPTO_BASE_ADDR = 0x680243C00000
+MMIO_ATTR = STRONG_ORDERED

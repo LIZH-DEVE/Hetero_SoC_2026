@@ -1,0 +1,13 @@
+DMA gateway hybrid smoke image
+  ctrl_base    = 0x40000000
+  dma_base     = 0x40001000
+  drop_wrong   = 0xCC
+  drop_unalign = 0xD0
+STREAM_STAGE EXACT_FIT PREP capacity=1024 packet_len=1024
+STREAM_STAGE EXACT_FIT PASS actual_len=1024
+STREAM_STAGE SHORT PREP capacity=1024 packet_len=64
+STREAM_STAGE SHORT PASS actual_len=64
+STREAM_STAGE OVERFLOW PREP capacity=64 packet_len=128
+STREAM_STAGE OVERFLOW PASS actual_len=64
+WRONG_PORT FAIL rc=-2
+DMA gateway hybrid smoke FAIL

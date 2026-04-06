@@ -1,0 +1,16 @@
+LIVE_CTRL PASS msg_type=6 session=0x00000001
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508034 err=5275704
+shadow-main: xemacif_input rx_packets=1 batches=36 total=36
+shadow-main: netif_input pkt=37 dst_port=4662 len=68
+LIVE_CTRL PASS msg_type=6 session=0x00000001
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508034 err=5275704
+shadow-main: xemacif_input rx_packets=1 batches=37 total=37
+shadow-main: netif_input pkt=38 dst_port=4662 len=66
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508034 err=5275704
+shadow-main: xemacif_input rx_packets=1 batches=38 total=38
+shadow-main: netif_input pkt=39 dst_port=4662 len=82
+LIVE_CTRL PASS msg_type=2 session=0x00000002
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508034 err=5275704
+shadow-main: xemacif_input rx_packets=1 batches=39 total=39
+xemacpsif_input: dispatch pkt=2054 ethertype=0x508034 err=5275704
+shadow-main: xemacif_input rx_packets=1 batches=40 total=40

@@ -1,9 +1,0 @@
-timestamp=[2026-03-22 14:25:20], mode=PLATFORM_REPOSITORY_INIT, duration=0:00:00.415, duration_ms=415, data={}
-timestamp=[2026-03-22 15:25:33], mode=PLATFORM_REPOSITORY_INIT, duration=0:00:00.316, duration_ms=316, data={}
-timestamp=[2026-03-22 15:27:00], mode=PLATFORM_REPOSITORY_INIT, duration=0:00:00.298, duration_ms=298, data={}
-timestamp=[2026-03-22 15:27:46], mode=PLATFORM_REPOSITORY_INIT, duration=0:00:00.306, duration_ms=306, data={}
-timestamp=[2026-03-22 15:28:58], mode=PLATFORM_REPOSITORY_INIT, duration=0:00:00.315, duration_ms=315, data={}
-timestamp=[2026-03-22 15:30:00], mode=PLATFORM_REPOSITORY_INIT, duration=0:00:00.431, duration_ms=431, data={}
-timestamp=[2026-03-22 15:31:18], mode=PLATFORM_REPOSITORY_INIT, duration=0:00:00.383, duration_ms=383, data={}
-timestamp=[2026-03-22 15:31:50], mode=APP_CREATION, duration=0:00:05.251, duration_ms=5251, data={name=ax7020_udp_gateway_app, project_type=sdk, os=standalone, processor=cortex-a9, runtime=C/C++, platform=ax7020_udp_gateway_platform_design1, application_type=application}
-timestamp=[2026-03-22 15:32:04], mode=BUILD, duration=0:00:00.608, duration_ms=608, data={name=ax7020_udp_gateway_app, configuration=Debug, clean_build=false}

@@ -1,0 +1,13 @@
+FSBL_DIAG AFTER_PS7_INIT
+FSBL_DIAG BEFORE_PCAP_LOAD
+FSBL_DIAG AFTER_PCAP_LOAD
+FSBL_DIAG BEFORE_HANDOFF
+FSBL_DIAG BEFORE_POST_CONFIG
+FSBL_DIAG AFTER_POST_CONFIG
+DMA stream smoke image
+  contract_ver = 2
+  dma_base     = 0x40000000
+  dummy_base   = 0x40001000
+  ring_base    = 0x001080A0
+  ring_size    = 2
+  word_granularity = 4

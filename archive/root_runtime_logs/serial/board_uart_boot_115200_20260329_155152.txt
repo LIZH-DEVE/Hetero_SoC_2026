@@ -1,0 +1,266 @@
+UDP gateway shadow mirror image
+
+
+----- AX7020 UDP Crypto Gateway -----
+UDP dst port 4660 = AES-128 ECB, 4661 = SM4, 4662 = control, 16-byte aligned payload only
+Packets are queued in udp_recv() and processed asynchronously in main loop
+CRYPTO_BASE_ADDR = 0x43C00000
+Start PHY autonegotiation 
+Waiting for PHY to complete autonegotiation.
+autonegotiation complete 
+link speed for phy address 1: 1000
+shadow-main: netif wrapped flags=0x0E input=0x001059A4
+Board IP: 192.168.1.20
+Netmask : 255.255.255.0
+Gateway : 192.168.1.1
+udp_crypto_gateway: custom PL clock/reset path already prepared
+
+===== SLCR PL Diagnostics =====
+IO_PLL_CTRL     (0xF8000108) = 0x0001E008
+IO_PLL_STATUS   (0xF800010C) = 0x0000003F
+IO_PLL_CFG      (0xF8000118) = 0x001452C0
+GEM0_RCLK_CTRL  (0xF8000138) = 0x00000001
+GEM0_CLK_CTRL   (0xF8000140) = 0x00100801
+TRACE_CLK_CTRL  (0xF8000168) = 0x00000501
+FPGA0_CLK_CTRL  (0xF8000170) = 0x00400500
+FPGA_CLK621     (0xF80001C4) = 0x00000001
+FPGA_RST_CTRL   (0xF8000240) = 0x00000000
+LVL_SHIFTERS_EN (0xF8000900) = 0x0000000F
+DEVCFG_STATUS   (0xF8007014) = 0x40000F30
+  PCFG_DONE = 0
+
+===== Active MMIO Bases =====
+CRYPTO_BASE_ADDR  = 0x43C00000
+WRAPPER_BASE_ADDR = 0x40000000 (fallback)
+
+===== Crypto MMIO Raw Dump (0x43C00000) =====
+  [0x43C00000] = 0x00000000
+  [0x43C00004] = 0x00000000
+  [0x43C00008] = 0xACE00403
+  [0x43C0000C] = 0x00000000
+  [0x43C00010] = 0x00000000
+  [0x43C00014] = 0x00000000
+  [0x43C00018] = 0x00000000
+  [0x43C0001C] = 0x00000000
+  [0x43C00020] = 0x00000000
+  [0x43C00024] = 0x00000000
+  [0x43C00028] = 0x00000000
+  [0x43C0002C] = 0x00000000
+  [0x43C00030] = 0x00000000
+  [0x43C00034] = 0x00000000
+  [0x43C00038] = 0x00000000
+  [0x43C0003C] = 0x00000000
+
+===== Wrapper CSR Probe (0x40000000) =====
+  [0x40000000] = 0x00000000
+  [0x40000004] = 0x00000000
+  [0x40000008] = 0x00000000
+  [0x4000000C] = 0x00000000
+  [0x40000020] = 0x00000000
+  [0x40000024] = 0x00000000
+  [0x40000028] = 0x00000000
+  [0x40000034] = 0x00000000
+  [0x40000048] = 0x00000000
+  [0x40000050] = 0x00000000
+  [0x40000054] = 0x00000000
+  [0x40000058] = 0x00000000
+  [0x4000005C] = 0x00000000
+  [0x40000090] = 0x00000007
+  [0x40000094] = 0xC0A80114
+  [0x40000098] = 0x35000120
+  [0x4000009C] = 0x0000020A
+  [0x400000A0] = 0x00000001
+  [0x400000A4] = 0x00000000
+  [0x400000A8] = 0x00000000
+  [0x400000AC] = 0x00000001
+  [0x400000B0] = 0x00000000
+  [0x400000B4] = 0x00000000
+  [0x400000B8] = 0x00000000
+  [0x400000BC] = 0x00000007
+  [0x400000C0] = 0xC0A80114
+  [0x400000C4] = 0x35000120
+  [0x400000C8] = 0x0000020A
+===== End Register Dump =====
+
+udp_crypto_gateway: REG_STATUS initial=0xACE00403
+udp_crypto_gateway: udp_bind AES ok pcb=0x00220200 local_port=4660
+udp_crypto_gateway: udp_bind SM4 ok pcb=0x002201C0 local_port=4661
+udp_crypto_gateway: udp_bind CTRL ok pcb=0x00220180 local_port=4662
+UDP crypto gateway started @ ports 4660(AES) 4661(SM4) 4662(CTRL)
+xemacpsif_input: pkt=257698039814 ethertype=0x001E len=5275720
+xemacpsif_input: dispatch pkt=2054 ethertype=0x001E err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=1 total=1
+xemacpsif_input: pkt=257698039814 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2054 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=2 total=2
+xemacpsif_input: pkt=257698039814 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2054 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=3 total=3
+xemacpsif_input: pkt=257698039814 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2054 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=4 total=4
+xemacpsif_input: pkt=257698039814 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2054 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=5 total=5
+xemacpsif_input: pkt=257698039814 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2054 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=6 total=6
+xemacpsif_input: pkt=257698039814 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2054 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=7 total=7
+xemacpsif_input: pkt=257698039814 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2054 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=8 total=8
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=9 total=9
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=10 total=10
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=11 total=11
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=12 total=12
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=13 total=13
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=14 total=14
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=15 total=15
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=16 total=16
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=17 total=17
+xemacpsif_input: pkt=257698039814 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2054 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=18 total=18
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=19 total=19
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=20 total=20
+xemacpsif_input: pkt=472446404608 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=21 total=21
+xemacpsif_input: pkt=1043677054976 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=22 total=22
+xemacpsif_input: pkt=257698039814 ethertype=0x508038 len=5275720
+xemacpsif_input: dispatch pkt=2054 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=23 total=23
+xemacpsif_input: pkt=283467843584 ethertype=0x508038 len=5275720
+shadow-main: netif_input pkt=24 dst_port=4662 len=66
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=24 total=24
+xemacpsif_input: pkt=283467843584 ethertype=0x508038 len=5275720
+shadow-main: netif_input pkt=25 dst_port=4662 len=66
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=25 total=25
+xemacpsif_input: pkt=352187320320 ethertype=0x508038 len=5275720
+shadow-main: netif_input pkt=26 dst_port=4662 len=82
+LIVE_CTRL PASS msg_type=2 session=0x00000002
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=26 total=26
+xemacpsif_input: pkt=257698039808 ethertype=0x508038 len=5275720
+shadow-main: netif_input pkt=27 dst_port=4660 len=60
+udp_crypto_gateway: rx_callback entry algo=AES local_port=4660 len=16 src_port=50407
+udp_crypto_gateway: queued algo=AES local_port=4660 len=16 from port=50407
+udp_crypto_gateway: shadow queued algo=AES local_port=4660 len=16 slot=0 pending=1
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=27 total=27
+udp_crypto_gateway: job_start seq=1 algo=AES local_port=4660 len=16 src=192.168.1.11:50407 state=WAIT_ENGINE_READY qdepth=0
+udp_crypto_gateway: state=WAIT_ENGINE_READY ready status=0xACE00403 offset=0/16
+udp_crypto_gateway: stale_drain words=0 final_status=0xACE00403
+udp_crypto_gateway: shadow submit rc=-2 slot=0 local_port=4660 len=16 sw_tail=0
+udp_crypto_gateway: load_key algo=AES[0] off=0x1C val=0xF79BCB65
+udp_crypto_gateway: load_key algo=AES[1] off=0x18 val=0xCDB7B7A3
+udp_crypto_gateway: load_key algo=AES[2] off=0x14 val=0xF497DEA5
+udp_crypto_gateway: load_key algo=AES[3] off=0x10 val=0x3C693557
+udp_crypto_gateway: ctrl_write algo=AES begin value=0x00000002
+udp_crypto_gateway: ctrl_written algo=AES status_after=0xACE00403
+udp_crypto_gateway: state=WAIT_INPUT_ACCEPT ready status=0xACE00403 offset=0/16
+udp_crypto_gateway: data_in[0]=0x3243F6A8
+udp_crypto_gateway: data_in[1]=0x885A308D
+udp_crypto_gateway: data_in[2]=0x313198A2
+udp_crypto_gateway: data_in[3]=0xE0370734
+udp_crypto_gateway: push_block done status_after=0xACE00513 data0=3243F6A8
+udp_crypto_gateway: state=WAIT_BLOCK_DONE block_done status=0xACE00511 offset=0/16
+udp_crypto_gateway: raw_data_out[0]=0x8F823D9B status=0xACE00511
+udp_crypto_gateway: raw_data_out[1]=0x4747CA31 status=0xACE00511
+udp_crypto_gateway: raw_data_out[2]=0xD5A64C99 status=0xACE00511
+udp_crypto_gateway: raw_data_out[3]=0x86747EA8 status=0xACE00511
+udp_crypto_gateway: pull_block done out0=8F823D9B
+udp_crypto_gateway: job_complete algo=AES blocks=1 len=16
+udp_crypto_gateway: send_active_response algo=AES local_port=4660 len=16 dst=192.168.1.11:50407
+udp_crypto_gateway: response sent algo=AES local_port=4660 len=16 total=1
+LIVE_AES PASS len=16
+xemacpsif_input: pkt=283467843584 ethertype=0x508038 len=5275720
+shadow-main: netif_input pkt=28 dst_port=4662 len=66
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=28 total=28
+xemacpsif_input: pkt=352187320320 ethertype=0x508038 len=5275720
+shadow-main: netif_input pkt=29 dst_port=4662 len=82
+LIVE_CTRL PASS msg_type=2 session=0x00000003
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=29 total=29
+xemacpsif_input: pkt=257698039808 ethertype=0x508038 len=5275720
+shadow-main: netif_input pkt=30 dst_port=4661 len=60
+udp_crypto_gateway: rx_callback entry algo=SM4 local_port=4661 len=16 src_port=50409
+udp_crypto_gateway: queued algo=SM4 local_port=4661 len=16 from port=50409
+udp_crypto_gateway: shadow queued algo=SM4 local_port=4661 len=16 slot=0 pending=1
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=30 total=30
+udp_crypto_gateway: job_start seq=2 algo=SM4 local_port=4661 len=16 src=192.168.1.11:50409 state=WAIT_ENGINE_READY qdepth=0
+udp_crypto_gateway: state=WAIT_ENGINE_READY ready status=0xACE00513 offset=0/16
+udp_crypto_gateway: stale_drain words=0 final_status=0xACE00513
+udp_crypto_gateway: shadow submit rc=-2 slot=0 local_port=4661 len=16 sw_tail=0
+udp_crypto_gateway: load_key algo=SM4[0] off=0x1C val=0xC14A7138
+udp_crypto_gateway: load_key algo=SM4[1] off=0x18 val=0xBF328A02
+udp_crypto_gateway: load_key algo=SM4[2] off=0x14 val=0xC96656F4
+udp_crypto_gateway: load_key algo=SM4[3] off=0x10 val=0x2D24F192
+udp_crypto_gateway: ctrl_write algo=SM4 begin value=0x00000003
+udp_crypto_gateway: ctrl_written algo=SM4 status_after=0xACE00513
+udp_crypto_gateway: state=WAIT_INPUT_ACCEPT ready status=0xACE00513 offset=0/16
+udp_crypto_gateway: data_in[0]=0x01234567
+udp_crypto_gateway: data_in[1]=0x89ABCDEF
+udp_crypto_gateway: data_in[2]=0xFEDCBA98
+udp_crypto_gateway: data_in[3]=0x76543210
+udp_crypto_gateway: push_block done status_after=0xACE00623 data0=01234567
+udp_crypto_gateway: state=WAIT_BLOCK_DONE block_done status=0xACE00621 offset=0/16
+udp_crypto_gateway: raw_data_out[0]=0xAA2860C4 status=0xACE00621
+udp_crypto_gateway: raw_data_out[1]=0x00CE76A6 status=0xACE00621
+udp_crypto_gateway: raw_data_out[2]=0x59AB940E status=0xACE00621
+udp_crypto_gateway: raw_data_out[3]=0x7866CDA1 status=0xACE00621
+udp_crypto_gateway: pull_block done out0=AA2860C4
+udp_crypto_gateway: job_complete algo=SM4 blocks=1 len=16
+udp_crypto_gateway: send_active_response algo=SM4 local_port=4661 len=16 dst=192.168.1.11:50409
+udp_crypto_gateway: response sent algo=SM4 local_port=4661 len=16 total=2
+LIVE_SM4 PASS len=16
+xemacpsif_input: pkt=257698039808 ethertype=0x508038 len=5275720
+shadow-main: netif_input pkt=31 dst_port=4660 len=60
+udp_crypto_gateway: rx_callback entry algo=AES local_port=4660 len=17 src_port=50410
+udp_crypto_gateway: drop invalid algo=AES local_port=4660 len=17
+SHADOW_INVALID_SKIP PASS local_port=4660 len=17
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=31 total=31
+xemacpsif_input: pkt=257698039808 ethertype=0x508038 len=5275720
+shadow-main: netif_input pkt=32 dst_port=4660 len=60
+udp_crypto_gateway: rx_callback entry algo=AES local_port=4660 len=17 src_port=50410
+udp_crypto_gateway: drop invalid algo=AES local_port=4660 len=17
+SHADOW_INVALID_SKIP PASS local_port=4660 len=17
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=32 total=32
+shadow-main: netif_input pkt=33 dst_port=4660 len=60
+udp_crypto_gateway: rx_callback entry algo=AES local_port=4660 len=17 src_port=50410
+udp_crypto_gateway: drop invalid algo=AES local_port=4660 len=17
+SHADOW_INVALID_SKIP PASS local_port=4660 len=17
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=33 total=33

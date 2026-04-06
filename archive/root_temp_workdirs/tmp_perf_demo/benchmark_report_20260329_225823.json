@@ -1,0 +1,31 @@
+{
+  "timestamp": "2026-03-29T22:58:23.977474",
+  "configuration": {
+    "crypto_type": "aes-128-cbc",
+    "duration_s": 30,
+    "expected_speedup": 40.0,
+    "skip_openssl": true
+  },
+  "data_source": "demo",
+  "acceptance_eligible": false,
+  "results": {
+    "software_throughput_mb_s": null,
+    "hardware_throughput_mb_s": 102539.0625,
+    "speedup": null,
+    "meets_speedup_target": false,
+    "cpu_usage": {
+      "software_pct": 100.0,
+      "hardware_pct": 1.0,
+      "offload_pct": 99.0
+    },
+    "hardware_sample": {
+      "fastpath_cnt": 1000000,
+      "bypass_cnt": 50000,
+      "burst_256_cnt": 800000,
+      "burst_128_cnt": 150000,
+      "sample_duration_us": 10000,
+      "drop_cnt": 100
+    },
+    "chart": null
+  }
+}

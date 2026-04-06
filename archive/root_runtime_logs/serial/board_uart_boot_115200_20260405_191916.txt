@@ -1,0 +1,93 @@
+shadow-main: netif_input pkt=111 dst_port=4662 len=82
+LIVE_CTRL PASS msg_type=2 session=0x0000000B
+shadow-main: xemacif_input rx_packets=1 batches=111 total=111
+shadow-main: xemacif_input rx_packets=1 batches=112 total=112
+shadow-main: xemacif_input rx_packets=1 batches=113 total=113
+shadow-main: xemacif_input rx_packets=1 batches=114 total=114
+shadow-main: xemacif_input rx_packets=1 batches=115 total=115
+shadow-main: xemacif_input rx_packets=1 batches=116 total=116
+shadow-main: xemacif_input rx_packets=1 batches=117 total=117
+shadow-main: xemacif_input rx_packets=1 batches=118 total=118
+shadow-main: netif_input pkt=119 dst_port=4662 len=66
+shadow-main: xemacif_input rx_packets=1 batches=119 total=119
+shadow-main: netif_input pkt=120 dst_port=4662 len=82
+LIVE_CTRL PASS msg_type=2 session=0x0000000C
+shadow-main: xemacif_input rx_packets=1 batches=120 total=120
+shadow-main: netif_input pkt=121 dst_port=4660 len=60
+udp_crypto_gateway: rx_callback entry algo=AES local_port=4660 len=16 src_port=56975
+udp_crypto_gateway: queued algo=AES local_port=4660 len=16 from port=56975
+udp_crypto_gateway: shadow queued algo=AES local_port=4660 len=16 slot=0 pending=1
+shadow-main: xemacif_input rx_packets=1 batches=121 total=121
+udp_crypto_gateway: job_start seq=5 algo=AES local_port=4660 len=16 src=192.168.1.11:56975 state=WAIT_ENGINE_READY qdepth=0
+udp_crypto_gateway: state=WAIT_ENGINE_READY ready status=0xACE00403 offset=0/16
+udp_crypto_gateway: stale_drain words=0 final_status=0xACE00403
+udp_crypto_gateway: shadow active algo=AES local_port=4660 len=16 slot=0 sw_tail=1
+udp_crypto_gateway: load_key algo=AES[0] off=0x1C val=0x8B5529F5
+udp_crypto_gateway: load_key algo=AES[1] off=0x18 val=0x444E4983
+udp_crypto_gateway: load_key algo=AES[2] off=0x14 val=0x6ED21075
+udp_crypto_gateway: load_key algo=AES[3] off=0x10 val=0xB288AFBF
+SHADOW_FASTPATH PASS actual_len=16
+FASTPATH_HIT_COUNT count=4
+FASTPATH_FALLBACK_COUNT count=0
+TXCAP words=15 frame_words=15 status=0x00000047
+SHADOW_AES PASS actual_len=16
+udp_crypto_gateway: ctrl_write algo=AES begin value=0x00000002
+udp_crypto_gateway: ctrl_written algo=AES status_after=0xACE00403
+udp_crypto_gateway: state=WAIT_INPUT_ACCEPT ready status=0xACE00403 offset=0/16
+udp_crypto_gateway: data_in[0]=0x3243F6A8
+udp_crypto_gateway: data_in[1]=0x885A308D
+udp_crypto_gateway: data_in[2]=0x313198A2
+udp_crypto_gateway: data_in[3]=0xE0370734
+udp_crypto_gateway: push_block done status_after=0xACE00512 data0=3243F6A8
+udp_crypto_gateway: state=WAIT_BLOCK_DONE block_done status=0xACE00511 offset=0/16
+udp_crypto_gateway: raw_data_out[0]=0xD55F2228 status=0xACE00511
+udp_crypto_gateway: raw_data_out[1]=0x1B2867FD status=0xACE00511
+udp_crypto_gateway: raw_data_out[2]=0x25F35877 status=0xACE00511
+udp_crypto_gateway: raw_data_out[3]=0x136209C1 status=0xACE00511
+udp_crypto_gateway: pull_block done out0=D55F2228
+udp_crypto_gateway: job_complete algo=AES blocks=1 len=16
+udp_crypto_gateway: send_active_response algo=AES local_port=4660 len=16 dst=192.168.1.11:56975
+udp_crypto_gateway: response sent algo=AES local_port=4660 len=16 total=5
+LIVE_AES PASS len=16
+shadow-main: netif_input pkt=122 dst_port=4662 len=66
+shadow-main: xemacif_input rx_packets=1 batches=122 total=122
+shadow-main: netif_input pkt=123 dst_port=4662 len=82
+LIVE_CTRL PASS msg_type=2 session=0x0000000D
+shadow-main: xemacif_input rx_packets=1 batches=123 total=123
+shadow-main: netif_input pkt=124 dst_port=4661 len=60
+udp_crypto_gateway: rx_callback entry algo=SM4 local_port=4661 len=16 src_port=58831
+udp_crypto_gateway: queued algo=SM4 local_port=4661 len=16 from port=58831
+udp_crypto_gateway: shadow queued algo=SM4 local_port=4661 len=16 slot=0 pending=1
+shadow-main: xemacif_input rx_packets=1 batches=124 total=124
+udp_crypto_gateway: job_start seq=6 algo=SM4 local_port=4661 len=16 src=192.168.1.11:58831 state=WAIT_ENGINE_READY qdepth=0
+udp_crypto_gateway: state=WAIT_ENGINE_READY ready status=0xACE00513 offset=0/16
+udp_crypto_gateway: stale_drain words=0 final_status=0xACE00513
+udp_crypto_gateway: shadow active algo=SM4 local_port=4661 len=16 slot=0 sw_tail=1
+udp_crypto_gateway: load_key algo=SM4[0] off=0x1C val=0xFC302638
+udp_crypto_gateway: load_key algo=SM4[1] off=0x18 val=0x3A3D1752
+udp_crypto_gateway: load_key algo=SM4[2] off=0x14 val=0x79427C94
+udp_crypto_gateway: load_key algo=SM4[3] off=0x10 val=0x5EF8B56A
+SHADOW_FASTPATH PASS actual_len=16
+FASTPATH_HIT_COUNT count=5
+FASTPATH_FALLBACK_COUNT count=0
+TXCAP words=15 frame_words=15 status=0x00000047
+SHADOW_SM4 PASS actual_len=16
+udp_crypto_gateway: ctrl_write algo=SM4 begin value=0x00000003
+udp_crypto_gateway: ctrl_written algo=SM4 status_after=0xACE00513
+udp_crypto_gateway: state=WAIT_INPUT_ACCEPT ready status=0xACE00513 offset=0/16
+udp_crypto_gateway: data_in[0]=0x01234567
+udp_crypto_gateway: data_in[1]=0x89ABCDEF
+udp_crypto_gateway: data_in[2]=0xFEDCBA98
+udp_crypto_gateway: data_in[3]=0x76543210
+udp_crypto_gateway: push_block done status_after=0xACE00622 data0=01234567
+udp_crypto_gateway: state=WAIT_BLOCK_DONE block_done status=0xACE00621 offset=0/16
+udp_crypto_gateway: raw_data_out[0]=0x168DF9F4 status=0xACE00621
+udp_crypto_gateway: raw_data_out[1]=0x1CE66F08 status=0xACE00621
+udp_crypto_gateway: raw_data_out[2]=0xC9EA7D52 status=0xACE00621
+udp_crypto_gateway: raw_data_out[3]=0x9BE84170 status=0xACE00621
+udp_crypto_gateway: pull_block done out0=168DF9F4
+udp_crypto_gateway: job_complete algo=SM4 blocks=1 len=16
+udp_crypto_gateway: send_active_response algo=SM4 local_port=4661 len=16 dst=192.168.1.11:58831
+udp_crypto_gateway: response sent algo=SM4 local_port=4661 len=16 total=6
+LIVE_SM4 PASS len=16
+shadow-main: xemacif_input rx_packets=1 batches=125 total=125

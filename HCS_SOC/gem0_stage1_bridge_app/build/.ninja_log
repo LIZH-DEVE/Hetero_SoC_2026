@@ -1,9 +1,0 @@
-# ninja log v5
-17	210	7956354505089973	CMakeFiles/gem0_stage1_bridge_app.elf.dir/1079cb99663754bf2eaf453cadbc45c7/platform/ps7_cortexa9_0/standalone_ps7_cortexa9_0/bsp/libsrc/emacps/src/xemacps_hw.c.obj	acdfdd3cc0d54aac
-11	211	7956354505100323	CMakeFiles/gem0_stage1_bridge_app.elf.dir/1f185bbfa548419e0011c99766130a7e/ps7_cortexa9_0/standalone_ps7_cortexa9_0/bsp/libsrc/emacps/src/xemacps_bdring.c.obj	db3d23f310f556d3
-20	211	7956354505089973	CMakeFiles/gem0_stage1_bridge_app.elf.dir/1f185bbfa548419e0011c99766130a7e/ps7_cortexa9_0/standalone_ps7_cortexa9_0/bsp/libsrc/emacps/src/xemacps_sinit.c.obj	76de9ab3301f2da3
-15	212	7956354505069896	CMakeFiles/gem0_stage1_bridge_app.elf.dir/1079cb99663754bf2eaf453cadbc45c7/platform/ps7_cortexa9_0/standalone_ps7_cortexa9_0/bsp/libsrc/emacps/src/xemacps_g.c.obj	420d3bb9cdff5eeb
-6	213	7956354505121155	CMakeFiles/gem0_stage1_bridge_app.elf.dir/main.c.obj	7941c7f2b953d68d
-13	213	7956354505100323	CMakeFiles/gem0_stage1_bridge_app.elf.dir/1f185bbfa548419e0011c99766130a7e/ps7_cortexa9_0/standalone_ps7_cortexa9_0/bsp/libsrc/emacps/src/xemacps_control.c.obj	91c86b087c93d0f2
-9	214	7956354505079872	CMakeFiles/gem0_stage1_bridge_app.elf.dir/1079cb99663754bf2eaf453cadbc45c7/platform/ps7_cortexa9_0/standalone_ps7_cortexa9_0/bsp/libsrc/emacps/src/xemacps.c.obj	c93611baff0fa224
-214	588	7956354506308383	gem0_stage1_bridge_app.elf	d0d81f5af060520d

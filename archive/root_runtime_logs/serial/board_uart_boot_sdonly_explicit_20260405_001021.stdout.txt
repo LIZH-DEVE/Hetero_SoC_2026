@@ -1,0 +1,3 @@
+UART capture saved to D:\FPGAhanjia\Hetero_SoC_2026_3\Hetero_SoC_2026\board_uart_boot_sdonly_explicit_20260405_001021.txt
+Port=COM9 PreferredBaud=115200 DetectedBaud=115200 Bytes=0 CaptureLooksSane=False PrintableRatio=0.000
+¾¯¸æ: No UART data captured.

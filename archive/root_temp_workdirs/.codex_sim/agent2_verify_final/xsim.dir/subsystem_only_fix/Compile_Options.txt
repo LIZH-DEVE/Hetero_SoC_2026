@@ -1,0 +1,1 @@
+--timescale "1ns/1ps" "dma_raw_copy_subsystem" -s "subsystem_only_fix" 

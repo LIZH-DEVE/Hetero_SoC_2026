@@ -1,0 +1,1 @@
+--timescale "1ns/1ps" --debug "typical" -mt "off" "tb_dma_raw_copy_subsystem" -s "tb_dma_raw_copy_subsystem_sim" 

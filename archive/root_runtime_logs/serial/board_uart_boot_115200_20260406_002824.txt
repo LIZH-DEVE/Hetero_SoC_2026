@@ -1,0 +1,24 @@
+LIVE_CTRL PASS msg_type=6 session=0x0000000B
+shadow-main: xemacif_input rx_packets=1 batches=104 total=104
+shadow-main: netif_input pkt=105 dst_port=4662 len=68
+LIVE_CTRL PASS msg_type=6 session=0x0000000B
+shadow-main: xemacif_input rx_packets=1 batches=105 total=105
+shadow-main: xemacif_input rx_packets=1 batches=106 total=106
+shadow-main: xemacif_input rx_packets=1 batches=107 total=107
+shadow-main: xemacif_input rx_packets=1 batches=108 total=108
+shadow-main: xemacif_input rx_packets=1 batches=109 total=109
+shadow-main: xemacif_input rx_packets=1 batches=110 total=110
+shadow-main: xemacif_input rx_packets=1 batches=111 total=111
+shadow-main: xemacif_input rx_packets=1 batches=112 total=112
+shadow-main: xemacif_input rx_packets=1 batches=113 total=113
+shadow-main: xemacif_input rx_packets=1 batches=114 total=114
+shadow-main: xemacif_input rx_packets=1 batches=115 total=115
+shadow-main: xemacif_input rx_packets=1 batches=116 total=116
+shadow-main: xemacif_input rx_packets=1 batches=117 total=117
+shadow-main: xemacif_input rx_packets=1 batches=118 total=118
+shadow-main: xemacif_input rx_packets=1 batches=119 total=119
+shadow-main: xemacif_input rx_packets=1 batches=120 total=120
+shadow-main: xemacif_input rx_packets=1 batches=121 total=121
+shadow-main: xemacif_input rx_packets=1 batches=122 total=122
+shadow-main: xemacif_input rx_packets=1 batches=123 total=123
+shadow-main: xemacif_input rx_packets=1 batches=124 total=124

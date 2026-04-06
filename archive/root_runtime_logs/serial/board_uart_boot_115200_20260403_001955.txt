@@ -1,0 +1,68 @@
+shadow-main: netif_input pkt=57 dst_port=4662 len=82
+LIVE_CTRL PASS msg_type=2 session=0x00000007
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=57 total=57
+shadow-main: netif_input pkt=58 dst_port=4662 len=66
+LIVE_CTRL PASS msg_type=5 session=0x00000007
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=58 total=58
+shadow-main: netif_input pkt=59 dst_port=4662 len=66
+LIVE_CTRL PASS msg_type=8 session=0x00000007
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=59 total=59
+shadow-main: netif_input pkt=60 dst_port=4662 len=79
+LIVE_CTRL PASS msg_type=7 session=0x00000007
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=60 total=60
+xemacpsif_input: dispatch pkt=2054 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=61 total=61
+shadow-main: netif_input pkt=62 dst_port=4662 len=66
+LIVE_CTRL PASS msg_type=9 session=0x00000007
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=62 total=62
+shadow-main: netif_input pkt=63 dst_port=4660 len=60
+udp_crypto_gateway: rx_callback entry algo=AES local_port=4660 len=16 src_port=54060
+udp_crypto_gateway: queued algo=AES local_port=4660 len=16 from port=54060
+udp_crypto_gateway: shadow queued algo=AES local_port=4660 len=16 slot=0 pending=1
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=63 total=63
+udp_crypto_gateway: job_start seq=4 algo=AES local_port=4660 len=16 src=192.168.1.11:54060 state=WAIT_ENGINE_READY qdepth=0
+udp_crypto_gateway: state=WAIT_ENGINE_READY ready status=0xACE00733 offset=0/16
+udp_crypto_gateway: stale_drain words=0 final_status=0xACE00733
+udp_crypto_gateway: shadow active algo=AES local_port=4660 len=16 slot=0 sw_tail=1
+udp_crypto_gateway: load_key algo=AES[0] off=0x1C val=0x8B5529F5
+udp_crypto_gateway: load_key algo=AES[1] off=0x18 val=0x444E4983
+udp_crypto_gateway: load_key algo=AES[2] off=0x14 val=0x6ED21075
+udp_crypto_gateway: load_key algo=AES[3] off=0x10 val=0xB288AFBF
+SHADOW_ACL_DROP PASS acl_count=1 local_port=4660 len=16
+udp_crypto_gateway: ctrl_write algo=AES begin value=0x00000002
+udp_crypto_gateway: ctrl_written algo=AES status_after=0xACE00733
+udp_crypto_gateway: state=WAIT_INPUT_ACCEPT ready status=0xACE00733 offset=0/16
+udp_crypto_gateway: data_in[0]=0x00010203
+udp_crypto_gateway: data_in[1]=0x04050607
+udp_crypto_gateway: data_in[2]=0x08090A0B
+udp_crypto_gateway: data_in[3]=0x0C0D0E0F
+udp_crypto_gateway: push_block done status_after=0xACE00402 data0=00010203
+udp_crypto_gateway: state=WAIT_BLOCK_DONE block_done status=0xACE00401 offset=0/16
+udp_crypto_gateway: raw_data_out[0]=0x4D6C3422 status=0xACE00401
+udp_crypto_gateway: raw_data_out[1]=0x974FFC58 status=0xACE00401
+udp_crypto_gateway: raw_data_out[2]=0xCDD5A8B7 status=0xACE00401
+udp_crypto_gateway: raw_data_out[3]=0x4CE60F05 status=0xACE00401
+udp_crypto_gateway: pull_block done out0=4D6C3422
+udp_crypto_gateway: job_complete algo=AES blocks=1 len=16
+udp_crypto_gateway: send_active_response algo=AES local_port=4660 len=16 dst=192.168.1.11:54060
+udp_crypto_gateway: response sent algo=AES local_port=4660 len=16 total=4
+LIVE_AES PASS len=16
+shadow-main: netif_input pkt=64 dst_port=4662 len=66
+LIVE_CTRL PASS msg_type=5 session=0x00000007
+xemacpsif_input: dispatch pkt=2048 ethertype=0x508038 err=5275720
+shadow-main: xemacif_input rx_packets=1 batches=64 total=64
+shadow-main: netif_input pkt=65 dst_port=4662 len=66
+LIVE_CTRL PASS msg_type=9 session=0x00000007
+shadow-main: xemacif_input rx_packets=1 batches=65 total=65
+shadow-main: netif_input pkt=66 dst_port=4662 len=66
+LIVE_CTRL PASS msg_type=5 session=0x00000007
+shadow-main: xemacif_input rx_packets=1 batches=66 total=66
+shadow-main: netif_input pkt=67 dst_port=4662 len=66
+LIVE_CTRL PASS msg_type=9 session=0x00000007
+shadow-main: xemacif_input rx_packets=1 batches=67 total=67

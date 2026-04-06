@@ -1,0 +1,9 @@
+the_ROM_image:
+{
+  // Stage 1: fresh FSBL from the dedicated raw-copy XSA
+  [bootloader] fsbl.elf
+  // Stage 2: bitstream from the same raw-copy XSA handoff
+  dma_raw_copy_smoke.bit
+  // Stage 3: raw-copy smoke application ELF
+  ax7020_dma_raw_copy_smoke_app.elf
+}

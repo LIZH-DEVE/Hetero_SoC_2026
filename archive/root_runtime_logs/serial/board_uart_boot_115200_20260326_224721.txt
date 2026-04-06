@@ -1,0 +1,16 @@
+RAWCOPY_STAGE INIT
+RAWCOPY_STAGE RESET
+DMA raw-copy smoke image
+  contract_ver = 1
+  csr_base     = 0x40000000
+  ring_base    = 0x001080A0
+  ring_size    = 2
+  src_addr     = 0x00108100
+  dst_addr     = 0x00108160
+  len          = 64
+RAWCOPY_STAGE SUBMIT
+RAWCOPY_STAGE WAIT_CSW
+  CSW=0x40000000 owner=0 done=1 err=0 sts=0
+RAWCOPY_STAGE INVALIDATE_DST
+RAWCOPY_STAGE COMPARE
+DMA raw-copy smoke PASS

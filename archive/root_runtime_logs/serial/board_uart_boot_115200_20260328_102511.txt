@@ -1,0 +1,17 @@
+UDP gateway backend smoke image
+  ctrl_base    = 0x40000000
+  dma_base     = 0x40001000
+  drop_wrong   = 0xCC
+  drop_unalign = 0xD0
+DIRECT_BACKEND START
+DIRECT_BACKEND PASS
+DMA_PROBE EXACT_FIT PREP capacity=1024 packet_len=1024
+DMA_PROBE EXACT_FIT PASS actual_len=1024
+DMA_PROBE SHORT PREP capacity=1024 packet_len=64
+DMA_PROBE SHORT PASS actual_len=64
+DMA_PROBE OVERFLOW PREP capacity=64 packet_len=128
+DMA_PROBE OVERFLOW PASS actual_len=64
+DMA_PROBE WRONG_PORT PASS count=1
+DMA_PROBE UNALIGNED_REJECT PASS rc=-6
+DMA_PROBE PASS
+UDP gateway backend smoke PASS

@@ -1,0 +1,12 @@
+0.7
+2020.2
+May 22 2024
+19:03:11
+D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/core/axil_csr.sv,1774404428,systemVerilog,,D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/core/dma/dma_desc_fetcher.sv,,axil_csr,,,,,,,,
+D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/core/dma/axis_packet_fifo_bram.sv,1774404428,systemVerilog,,D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/core/dma/dma_axis_fifo_wrapper.sv,,axis_packet_fifo_bram,,,,,,,,
+D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/core/dma/dma_axis_fifo_wrapper.sv,1774404428,systemVerilog,,D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/core/axil_csr.sv,,dma_axis_fifo_wrapper,,,,,,,,
+D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/core/dma/dma_desc_fetcher.sv,1774404428,systemVerilog,,D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/core/dma/dma_raw_copy_engine.sv,,dma_desc_fetcher,,,,,,,,
+D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/core/dma/dma_raw_copy_engine.sv,1774404428,systemVerilog,,D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/top/dma_raw_copy_subsystem.sv,,dma_raw_copy_engine,,,,,,,,
+D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/top/dma_raw_copy_subsystem.sv,1774404428,systemVerilog,,D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/tb/tb_dma_raw_copy_subsystem.sv,,dma_raw_copy_subsystem,,,,,,,,
+D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/tb/tb_dma_raw_copy_engine.sv,1774404243,systemVerilog,,D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/tb/tb_dma_raw_copy_subsystem.sv,,tb_dma_raw_copy_engine,,,,,,,,
+D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/tb/tb_dma_raw_copy_subsystem.sv,1774405392,systemVerilog,,,,tb_dma_raw_copy_subsystem,,,,,,,,

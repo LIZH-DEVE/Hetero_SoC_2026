@@ -1,0 +1,10 @@
+AX7020 DMA gateway hybrid perf proof image
+Stage 2 SG proof contract: single-launch, 1000 repeats, last-descriptor polling
+PROOF_CONFIG repeats=1000 ring_entries=2048 usable_desc=2047
+PROOF_ADDR ring=0x00274800 src=0x00274220 dst0=0x00104F20
+PROOF_MISMATCH_DIAG algo=aes length=16 sample_len=16
+PROOF_MISMATCH_SRC000102030405060708090A0B0C0D0E0F
+PROOF_MISMATCH_EXP50FE67CC996D32B6DA0937E99BAFEC60
+PROOF_MISMATCH_ACTAC091C4E2229B05118492E898A9CC57A
+PROOF_ROW algo=aes length=16 repeats=1000 sw_us=5242 hw_us=2086 batch_descriptor_count=1000 single_launch_used=1 doorbell_count=1 last_descriptor_poll_count=7319 actual_len_mismatch_count=0 cipher_mismatch_count=1000 descriptor_error_count=0 completion_timeout_count=0
+PROOF_FAIL algo=aes length=16 stage=hw rc=-5

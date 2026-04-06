@@ -1,0 +1,6 @@
+the_ROM_image:
+{
+  [bootloader] fsbl.elf
+  dma_raw_copy_memory_prep_diag.bit
+  ax7020_dma_raw_copy_memory_prep_diag_app.elf
+}

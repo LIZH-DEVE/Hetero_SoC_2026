@@ -1,0 +1,1 @@
+--timescale "1ns/1ps" "tb_dma_raw_copy_phase2_multidescriptor_irq" -s "tb_dma_raw_copy_phase2_multidescriptor_irq_sim" 

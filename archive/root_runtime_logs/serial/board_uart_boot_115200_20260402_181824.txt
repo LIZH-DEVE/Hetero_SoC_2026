@@ -1,0 +1,6 @@
+LIVE_CTRL PASS msg_type=6 session=0x00000007
+shadow-main: xemacif_input rx_packets=1 batches=68 total=68
+shadow-main: netif_input pkt=69 dst_port=4662 len=68
+LIVE_CTRL PASS msg_type=6 session=0x00000007
+shadow-main: xemacif_input rx_packets=1 batches=69 total=69
+shadow-main: xemacif_input rx_packets=1 batches=70 total=70

@@ -1,0 +1,6 @@
+PBLOCK:shadow_ctrl_region
+RANGE:
+CELLS:157
+PBLOCK:shadow_data_region
+RANGE:
+CELLS:69

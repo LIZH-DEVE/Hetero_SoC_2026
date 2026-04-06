@@ -1,0 +1,36 @@
+UDP gateway shadow mirror image
+
+
+----- AX7020 UDP Crypto Gateway -----
+UDP dst port 4660 = AES-128 ECB, 4661 = SM4, 4662 = control, 16-byte aligned payload only
+Packets are queued in udp_recv() and processed asynchronously in main loop
+CRYPTO_BASE_ADDR = 0x43C00000 (fallback)
+Start PHY autonegotiation 
+Waiting for PHY to complete autonegotiation.
+autonegotiation complete 
+link speed for phy address 1: 1000
+shadow-main: netif wrapped flags=0x0E input=0x001053EC
+Board IP: 192.168.1.20
+Netmask : 255.255.255.0
+Gateway : 192.168.1.1
+udp_crypto_gateway: custom PL clock/reset path already prepared
+
+===== SLCR PL Diagnostics =====
+IO_PLL_CTRL     (0xF8000108) = 0x0001E008
+IO_PLL_STATUS   (0xF800010C) = 0x0000003F
+IO_PLL_CFG      (0xF8000118) = 0x001452C0
+GEM0_RCLK_CTRL  (0xF8000138) = 0x00000001
+GEM0_CLK_CTRL   (0xF8000140) = 0x00100801
+TRACE_CLK_CTRL  (0xF8000168) = 0x00000501
+FPGA0_CLK_CTRL  (0xF8000170) = 0x00400500
+FPGA_CLK621     (0xF80001C4) = 0x00000001
+FPGA_RST_CTRL   (0xF8000240) = 0x00000000
+LVL_SHIFTERS_EN (0xF8000900) = 0x0000000F
+DEVCFG_STATUS   (0xF8007014) = 0x40000F30
+  PCFG_DONE = 0
+
+===== Active MMIO Bases =====
+CRYPTO_BASE_ADDR  = 0x43C00000 (fallback)
+WRAPPER_BASE_ADDR = 0x40000000
+
+===== Crypto MMIO Raw Dump (0x43C00000) =====

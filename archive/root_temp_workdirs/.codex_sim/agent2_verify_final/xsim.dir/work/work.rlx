@@ -1,0 +1,14 @@
+0.7
+2020.2
+May 22 2024
+19:03:11
+D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/core/axil_csr.sv,1774404428,systemVerilog,,D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/core/dma/dma_desc_fetcher.sv,,axil_csr,,,,,,,,
+D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/core/dma/axis_packet_fifo_bram.sv,1774404428,systemVerilog,,D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/core/dma/dma_axis_fifo_wrapper.sv,,axis_packet_fifo_bram,,,,,,,,
+D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/core/dma/dma_axis_fifo_wrapper.sv,1774406757,systemVerilog,,D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/core/axil_csr.sv,,dma_axis_fifo_wrapper,,,,,,,,
+D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/core/dma/dma_desc_fetcher.sv,1774406754,systemVerilog,,D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/core/dma/dma_raw_copy_engine.sv,,dma_desc_fetcher,,,,,,,,
+D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/core/dma/dma_raw_copy_engine.sv,1774406852,systemVerilog,,D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/top/dma_raw_copy_subsystem.sv,,dma_raw_copy_engine,,,,,,,,
+D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/inc/dma_csr_pkg.sv,1774408122,systemVerilog,D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/core/dma/dma_axis_fifo_wrapper.sv;D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/core/dma/dma_desc_fetcher.sv;D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/core/dma/dma_raw_copy_engine.sv;D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/top/dma_raw_copy_subsystem.sv;D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/tb/tb_dma_raw_copy_subsystem.sv,D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/core/dma/axis_packet_fifo_bram.sv,,dma_csr_pkg,,,,,,,,
+D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/rtl/top/dma_raw_copy_subsystem.sv,1774408084,systemVerilog,,D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/tb/tb_dma_raw_copy_subsystem.sv,,dma_raw_copy_subsystem,,,,,,,,
+D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/tb/tb_dma_desc_fetcher_doorbell_sanity.sv,1774407083,systemVerilog,,,,tb_dma_desc_fetcher_doorbell_sanity,,,,,,,,
+D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/tb/tb_dma_raw_copy_engine.sv,1774406769,systemVerilog,,D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/tb/tb_dma_raw_copy_subsystem.sv,,tb_dma_raw_copy_engine,,,,,,,,
+D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/tb/tb_dma_raw_copy_subsystem.sv,1774408674,systemVerilog,,D:/FPGAhanjia/Hetero_SoC_2026_3/Hetero_SoC_2026/tb/tb_dma_desc_fetcher_doorbell_sanity.sv,,tb_dma_raw_copy_subsystem,,,,,,,,

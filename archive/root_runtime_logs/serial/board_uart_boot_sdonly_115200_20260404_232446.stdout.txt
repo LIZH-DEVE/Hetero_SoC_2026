@@ -1,0 +1,4 @@
+Switching UART capture baud from 115200 to 230400 after empty probe.
+UART capture saved to D:\FPGAhanjia\Hetero_SoC_2026_3\Hetero_SoC_2026\board_uart_boot_sdonly_115200_20260404_232446.txt
+Port=COM9 PreferredBaud=115200 DetectedBaud=230400 Bytes=6581 CaptureLooksSane=False PrintableRatio=0.211
+¾¯¸æ: Captured UART bytes did not decode as sane printable text; treat UART evidence as unreliable.
