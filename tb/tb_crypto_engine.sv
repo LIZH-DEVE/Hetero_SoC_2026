@@ -22,7 +22,7 @@ module tb_crypto_engine();
     // 2. 接口信号
     // ========================================================
     logic           clk, rst_n;
-    logic           algo_sel, start, done, busy;
+    logic           algo_sel, encdec, start, done, busy;
     logic [31:0]    i_total_len;
     logic [7:0]     s_axil_araddr;
     logic [31:0]    s_axil_rdata;
@@ -33,7 +33,8 @@ module tb_crypto_engine();
     // ========================================================
     crypto_engine u_dut (
         .clk(clk), .rst_n(rst_n),
-        .algo_sel(algo_sel), .start(start), .i_total_len(i_total_len),
+        .algo_sel(algo_sel), .encdec(encdec),
+        .start(start), .i_total_len(i_total_len),
         .done(done), .busy(busy),
         .s_axil_araddr(s_axil_araddr), .s_axil_rdata(s_axil_rdata),
         .key(key), .din(din), .dout(dout)
@@ -50,7 +51,7 @@ module tb_crypto_engine();
     // [基础任务] 系统复位
     task system_reset();
         begin
-            rst_n = 0; start = 0; algo_sel = 0;
+            rst_n = 0; start = 0; algo_sel = 0; encdec = 1;
             i_total_len = 0; s_axil_araddr = 0;
             key = TEST_KEY; din = 0;
             #100 rst_n = 1;
@@ -63,10 +64,11 @@ module tb_crypto_engine();
         begin
             wait(!busy); // 阻塞直到空闲
             @(posedge clk);
-            din   <= data_in;
-            start <= 1;
+            din     <= data_in;
+            encdec  <= 1;  // Default to encrypt
+            start   <= 1;
             @(posedge clk);
-            start <= 0;
+            start   <= 0;
         end
     endtask
 
@@ -117,7 +119,7 @@ module tb_crypto_engine();
         integer i;
         begin
             $display("\n[TEST 1] AES-CBC Golden Vector Check");
-            algo_sel = 0; i_total_len = 64;
+            algo_sel = 0; encdec = 1; i_total_len = 64;  // AES Encrypt
 
             for (i = 0; i < 4; i++) begin
                 drive_packet(TEST_BLOCK);
